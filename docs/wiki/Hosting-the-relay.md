@@ -36,7 +36,8 @@ The *Compose* service type also works: set the compose path to `./deploy/dokploy
 service `relay`, port `8080`.
 
 **Upgrading:** after a new release, change `RELAY_VERSION` and `RELAY_SHA256` in
-`deploy/dokploy/Dockerfile` (the values are in the release's `SHA256SUMS.txt`), then redeploy.
+`deploy/dokploy/Dockerfile` (the release's `phonegate-relay-linux-x86_64.sha256` file has the
+checksum), then redeploy. Pulling the latest `main` in Dokploy does this for you.
 
 ## Option B: plain Docker + Caddy (automatic HTTPS)
 

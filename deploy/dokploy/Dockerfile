@@ -6,8 +6,8 @@
 #          Domains: your host, container port 8080, HTTPS on (see the "Hosting the relay" wiki page).
 #
 # To upgrade, change RELAY_VERSION and RELAY_SHA256 together (values from the release's SHA256SUMS.txt).
-ARG RELAY_VERSION=v0.1.0
-ARG RELAY_SHA256=2859a3c6cb371fe83f362e21756213592114b473d7ea5dd39024fb83f2ca385a
+ARG RELAY_VERSION=relay-v0.1.1
+ARG RELAY_SHA256=65a2245469394d406a57410b54131706e1f8b6145ec5f648bbee6aa7ca13e734
 
 FROM debian:bookworm-slim AS fetch
 ARG RELAY_VERSION
