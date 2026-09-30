@@ -54,7 +54,7 @@ Get the latest release from **[Releases](https://github.com/simplehima/phonegate
 | `phonegate-relay-linux-x86_64` | The relay server binary (used by the Dokploy deployment). |
 | `SHA256SUMS.txt` | Checksums: verify before running anything. |
 
-Step-by-step guides live in the **[wiki](https://github.com/simplehima/phonegate/wiki)**.
+Step-by-step guides live in the **[wiki](https://github.com/simplehima/phonegate/wiki)** (the same pages are in [docs/wiki](docs/wiki/README.md)).
 
 ## Components
 
@@ -77,7 +77,7 @@ plan, contracts) are in [docs/specs/](docs/specs/), and the engineering principl
 1. **Relay** (on a VPS with a domain name). Pick one:
    - **Dokploy**: create an Application from this repository with Build Type *Dockerfile*,
      `deploy/dokploy/Dockerfile`, context `deploy/dokploy`, then add a domain on port 8080 with
-     HTTPS. See [Hosting the relay](https://github.com/simplehima/phonegate/wiki/Hosting-the-relay).
+     HTTPS. See [Hosting the relay](docs/wiki/Hosting-the-relay.md).
    - **Plain Docker + Caddy**:
      ```bash
      cd deploy && cp .env.example .env    # set PG_DOMAIN=relay.example.com
