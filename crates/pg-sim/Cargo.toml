@@ -1,0 +1,13 @@
+[package]
+name = "pg-sim"
+description = "Test-only software phone for PhoneGate end-to-end tests (never shipped)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+pg-core.workspace = true
+rcgen.workspace = true
+zeroize.workspace = true

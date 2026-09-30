@@ -1,0 +1,11 @@
+target/
+**/build/
+.gradle/
+local.properties
+*.keystore
+*.jks
+google-services.json
+node_modules/
+.env
+dist/
+deploy/extra-ca/*.crt

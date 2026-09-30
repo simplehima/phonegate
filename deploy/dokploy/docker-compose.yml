@@ -1,0 +1,21 @@
+# PhoneGate relay as a Dokploy "Compose" service (alternative to the Application type).
+# Dokploy: Create Service → Compose → Provider: GitHub (simplehima/phonegate)
+#          Compose Path: ./deploy/dokploy/docker-compose.yml
+#          Domains: service "relay", port 8080, HTTPS on.
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      PG_TRUST_PROXY: "true"
+      RUST_LOG: info
+    expose:
+      - "8080"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    healthcheck:
+      disable: true   # distroless image has no shell; Dokploy/Traefik route to it directly

@@ -1,0 +1,18 @@
+# Vendored unmodified from https://github.com/mdsteele/rust-cfb tag v0.14.0 (MIT, see LICENSE).
+# Only dev-dependencies, benches, tests and examples were dropped.
+[package]
+name = "cfb"
+version = "0.14.0"
+authors = ["Matthew D. Steele <mdsteele@alum.mit.edu>"]
+description = "Read/write Compound File Binary (structured storage) files"
+repository = "https://github.com/mdsteele/rust-cfb"
+keywords = ["cfb", "storage", "structured"]
+license = "MIT"
+readme = "README.md"
+edition = "2018"
+rust-version = "1.74"
+
+[dependencies]
+fnv = "1.0"
+uuid = "1"
+web-time = "1"

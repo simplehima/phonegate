@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-qr-svg"
+description = "Enables the qr_svg command without any pre-configured scope."
+commands.allow = ["qr_svg"]
+
+[[permission]]
+identifier = "deny-qr-svg"
+description = "Denies the qr_svg command without any pre-configured scope."
+commands.deny = ["qr_svg"]

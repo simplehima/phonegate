@@ -1,0 +1,30 @@
+HOW TO INSTALL PHONEGATE ON YOUR ANDROID PHONE
+==============================================
+
+The file PhoneGate.apk in this folder is the PhoneGate app for your phone (Android 11 or newer).
+PhoneGate isn't on the Play Store, so you install it yourself. It takes about two minutes.
+
+1. MOVE THE FILE TO YOUR PHONE (pick one)
+   - USB cable: connect the phone, choose "File transfer" on the phone, and copy PhoneGate.apk
+     into its Download folder.
+   - Quick Share / Nearby Share: right-click PhoneGate.apk, choose Share, then pick your phone.
+   - Cloud drive: upload PhoneGate.apk to your own cloud drive, then open it on the phone.
+   Avoid sending it through messaging apps or other people's links.
+
+2. INSTALL IT
+   - On the phone, open the file (Files app > Downloads > PhoneGate.apk).
+   - Android asks to allow "Install unknown apps" for that app. Allow it for this one install
+     (you can turn it off again afterwards in Settings > Apps > Special app access).
+   - Tap Install, then Open.
+
+3. CHECK IT'S THE GENUINE APP
+   The PhoneGate app on this PC shows this file's fingerprints under
+   Set up > Get the phone app. They must match the ones published with the release.
+   If the PC app says the file changed after installation, don't install it. Reinstall
+   PhoneGate on the PC instead.
+
+4. PAIR
+   In PhoneGate on the phone, tap "Add a PC" and scan the QR code shown by PhoneGate on this PC.
+
+Updates: install newer versions over the old one. Android only accepts an update signed by the
+same key, which protects you from fake updates.

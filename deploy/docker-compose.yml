@@ -1,0 +1,34 @@
+# One-command self-hosting (FR-030):  cp .env.example .env  &&  docker compose up -d
+# Caddy obtains and renews a Let's Encrypt certificate for PG_DOMAIN automatically.
+services:
+  relay:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: phonegate-relay:latest
+    restart: unless-stopped
+    environment:
+      PG_TRUST_PROXY: "true"   # client IPs come from Caddy's X-Forwarded-For (rate limiting)
+      RUST_LOG: info
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    expose: ["8080"]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [relay]
+    environment:
+      PG_DOMAIN: ${PG_DOMAIN:?set PG_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

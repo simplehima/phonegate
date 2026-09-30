@@ -1,0 +1,10 @@
+target/
+**/target/
+android/
+windows/companion/
+.git/
+dist/
+node_modules/
+**/node_modules/
+*.log
+.env

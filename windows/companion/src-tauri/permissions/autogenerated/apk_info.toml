@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-apk-info"
+description = "Enables the apk_info command without any pre-configured scope."
+commands.allow = ["apk_info"]
+
+[[permission]]
+identifier = "deny-apk-info"
+description = "Denies the apk_info command without any pre-configured scope."
+commands.deny = ["apk_info"]

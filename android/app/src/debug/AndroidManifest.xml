@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug-only screenshot harness with synthetic data; absent from release builds. -->
+        <activity
+            android:name=".preview.PreviewActivity"
+            android:exported="true"
+            android:label="PhoneGate preview"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
+</manifest>

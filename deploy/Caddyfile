@@ -1,0 +1,10 @@
+{$PG_DOMAIN} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		-Server
+	}
+	# WebSocket upgrades are proxied transparently.
+	reverse_proxy relay:8080
+}

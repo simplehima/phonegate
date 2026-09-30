@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneGate</string>
+
+    <string name="channel_relay">Relay connection</string>
+    <string name="channel_relay_desc">Keeps PhoneGate listening for sign-in requests from your PCs.</string>
+    <string name="channel_requests">Sign-in requests</string>
+    <string name="channel_requests_desc">A PC is asking you to approve a sign-in. These expire after 60 seconds.</string>
+    <string name="channel_notices">Security notices</string>
+    <string name="channel_notices_desc">Recovery codes used, PCs unpaired and similar events.</string>
+    <string name="ongoing_title">PhoneGate is listening</string>
+    <string name="ongoing_none">No PCs paired</string>
+    <plurals name="ongoing_status">
+        <item quantity="one">Connected to %1$d of %2$d PC</item>
+        <item quantity="other">Connected to %1$d of %2$d PCs</item>
+    </plurals>
+
+    <string name="scenario_unlock">Unlock</string>
+    <string name="scenario_logon">Sign-in</string>
+    <string name="scenario_remote">Remote Desktop sign-in</string>
+    <string name="scenario_disable">Turn protection off</string>
+
+    <string name="notif_request_title">%1$s wants you to approve</string>
+    <string name="notif_request_text">%1$s, %2$s</string>
+    <string name="notif_request_hint">Open to type the number shown on the PC.</string>
+    <string name="notif_request_public">Sign-in request</string>
+    <string name="notif_request_public_text">A paired PC is asking for approval.</string>
+    <string name="action_deny">Deny</string>
+    <string name="action_not_me">This wasn\'t me</string>
+
+    <string name="notice_title">%1$s</string>
+    <string name="notice_recovery">A recovery code was used to sign in.</string>
+    <string name="notice_offline">An offline code was used to sign in.</string>
+    <string name="notice_enabled">Protection was turned on.</string>
+    <string name="notice_disabled">Protection was turned off.</string>
+    <string name="notice_cooldown">Too many refused requests. The PC paused new requests for a while.</string>
+    <string name="unpaired_by_pc">The PC removed this phone. Its keys were deleted from this phone.</string>
+    <string name="repair_key_missing">This phone\'s key for the PC is missing.</string>
+
+    <string name="slip_header">Visitor slip</string>
+    <string name="slip_gone_title">No request waiting</string>
+    <string name="slip_gone_body">This request was withdrawn or already answered. Nothing was approved.</string>
+    <string name="slip_expired_title">Request expired</string>
+    <string name="slip_expired_body">The 60 seconds ran out, so the PC stays locked. Start the sign-in again on the PC.</string>
+    <string name="slip_superseded_title">Replaced by a newer request</string>
+    <string name="slip_superseded_body">The PC sent a newer request. Answer that one instead.</string>
+    <string name="field_account">Account</string>
+    <string name="field_unknown">Not given</string>
+    <string name="field_kind">Sign-in kind</string>
+    <string name="field_time">Time</string>
+    <string name="field_remote">Remote address</string>
+    <string name="remote_none">None, at the PC itself</string>
+    <string name="badge_label">Number on the PC screen</string>
+    <string name="badge_hint">Type the 2-digit number the PC shows.</string>
+    <string name="badge_wrong">That number doesn\'t match the PC screen.</string>
+    <plurals name="badge_a11y">
+        <item quantity="one">Number shown on the PC, 2 digits, %1$d digit typed</item>
+        <item quantity="other">Number shown on the PC, 2 digits, %1$d digits typed</item>
+    </plurals>
+    <string name="slip_working">Sending your answer</string>
+    <string name="stamp_deny">DENY</string>
+    <string name="stamp_approve">APPROVE</string>
+    <string name="not_me">This wasn\'t me</string>
+    <string name="close">Close</string>
+    <string name="auto_not_me_detail">Wrong number typed twice</string>
+
+    <string name="done_approved">Approved. The PC will unlock now.</string>
+    <string name="done_denied">Denied. The PC stays locked.</string>
+    <string name="done_not_me">Reported as not you. The PC stays locked and logs the attempt.</string>
+    <string name="done_not_sent">Your answer could not reach the relay. The PC stays locked and the request will expire on its own. Use an offline code if you need to get in.</string>
+    <string name="done_key_invalidated">%1$s Pair this PC again. Until then, use a recovery code or an offline code.</string>
+    <string name="done_key_error">The approval key could not be used. Nothing was approved.</string>
+    <string name="bio_approve_title">Approve sign-in on %1$s</string>
+    <string name="bio_approve_subtitle">Account %1$s</string>
+
+    <string name="fgs_special_use">Keeps a WebSocket open to the owner\'s self-hosted relay so sign-in approval requests from paired Windows PCs arrive within seconds, including with the screen off.</string>
+
+    <!-- Feature 002: tamper alarm -->
+    <string name="scenario_change_setting">Change a security setting</string>
+    <string name="field_setting">Setting</string>
+    <string name="channel_tamper">Tamper alerts</string>
+    <string name="channel_tamper_desc">PhoneGate on a PC was stopped, damaged, turned off without you, or stopped reporting.</string>
+    <string name="tamper_title">Tamper alert: %1$s</string>
+    <string name="notice_agent_started">PhoneGate started on the PC.</string>
+    <string name="notice_agent_stopped">PhoneGate was stopped on the PC.</string>
+    <string name="notice_shutdown">The PC shut down.</string>
+    <string name="notice_sleep">The PC went to sleep.</string>
+    <string name="notice_resume">The PC woke up.</string>
+    <string name="notice_repaired">PhoneGate repaired itself.</string>
+    <string name="notice_safe_mode">The PC started in Safe Mode.</string>
+    <string name="notice_setting_changed">A security setting changed.</string>
+</resources>

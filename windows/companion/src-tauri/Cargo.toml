@@ -1,0 +1,45 @@
+[package]
+name = "phonegate-companion"
+description = "PhoneGate companion: pairs a phone, shows status, history and security warnings"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+license = "Apache-2.0"
+publish = false
+
+# Not a member of the root workspace (it is excluded there): Tauri pulls a large, separate
+# dependency tree with its own lockfile.
+
+[lib]
+name = "phonegate_companion"
+path = "src/lib.rs"
+
+[[bin]]
+name = "phonegate-companion"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde_json = "1"
+qrcode = { version = "0.14", default-features = false }
+sha2 = "0.10"
+pg-core = { path = "../../../crates/pg-core" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+# static.crates.io is unreachable for `cfb` from this build network, so the identical upstream
+# release is vendored (a transitive dependency of tauri-utils via `infer`).
+[patch.crates-io]
+cfb = { path = "vendor/cfb" }
+
+[features]
+# Serves the bundled UI (../dist) from inside the app. Without it the app loads the dev server
+# (devUrl, localhost:5173) — which is what `tauri dev` wants, and what a release must never do.
+# The release build scripts always pass `--features custom-protocol`.
+custom-protocol = ["tauri/custom-protocol"]

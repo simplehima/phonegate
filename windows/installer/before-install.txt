@@ -1,0 +1,22 @@
+PhoneGate changes how Windows signs you in. Please read this before you continue.
+
+WHAT GETS INSTALLED
+- The PhoneGate service, which holds this PC's key in its security chip (TPM).
+- The PhoneGate sign-in tile, used on the lock screen and at sign-in.
+- A watchdog that repairs PhoneGate if it is stopped or removed, and tells your phone.
+- The PhoneGate app for this PC, and the PhoneGate app for your Android phone (to copy over).
+
+PROTECTION STAYS OFF FOR NOW
+Nothing changes at the lock screen yet. You'll turn protection on in the PhoneGate app,
+after you pair your phone and save your recovery codes.
+
+BEFORE YOU TURN PROTECTION ON
+- If you can, try PhoneGate on a spare PC or a virtual machine first.
+- Keep your 10 recovery codes somewhere safe, away from this PC. They are how you
+  get in if your phone is lost or offline.
+- Turn on BitLocker with a startup PIN (PhoneGate can help). Without it, someone
+  with physical access could remove PhoneGate from the disk.
+- You'll need your own PhoneGate relay server address (see the README).
+
+This setup isn't code-signed yet, so Windows may show a SmartScreen warning.
+Only run a setup file whose SHA-256 matches the one published with the release.

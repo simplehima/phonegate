@@ -1,0 +1,16 @@
+[package]
+name = "pg-e2e"
+description = "End-to-end tests: real agent engine + real relay + simulated phone, including a malicious relay"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+pg-core = { workspace = true, features = ["client"] }
+pg-sim.workspace = true
+pg-agent.workspace = true
+phonegate-relay.workspace = true
+tokio.workspace = true
+serde_json.workspace = true

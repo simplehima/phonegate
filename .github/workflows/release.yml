@@ -1,0 +1,33 @@
+name: release
+# Run manually for a new release tag. The relay binary's SHA-256 must then be pinned in
+# deploy/dokploy/Dockerfile (RELAY_SHA256) in the next commit.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the relay binary to (e.g. v0.2.0)"
+        required: true
+permissions:
+  contents: write
+jobs:
+  relay-binary:
+    # Builds the Linux relay binary exactly like deploy/Dockerfile does and attaches it (and its
+    # checksum) to the GitHub release for this tag. The Windows setup and the Android APK are built
+    # and signed by the maintainer (the signing key never leaves their machine) and attached by hand.
+    runs-on: ubuntu-latest
+    container: rust:1-slim-bookworm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - run: cargo build --release --locked -p phonegate-relay && strip target/release/phonegate-relay
+      - run: |
+          cp target/release/phonegate-relay phonegate-relay-linux-x86_64
+          sha256sum phonegate-relay-linux-x86_64 > phonegate-relay-linux-x86_64.sha256
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: |
+            phonegate-relay-linux-x86_64
+            phonegate-relay-linux-x86_64.sha256
+          fail_on_unmatched_files: true
