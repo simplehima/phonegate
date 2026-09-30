@@ -28,6 +28,8 @@ certificate. Shared web hosting (PHP-only plans) can't run it.
    To share a host with another app, you can instead set **Path** `/relay` and turn on
    **Strip Path**. Your relay address is then `https://example.com/relay`.
 5. **Deploy**, then open `https://relay.example.com/healthz`. It should say `ok`.
+   Opening `https://relay.example.com/` itself shows a short page saying it's a PhoneGate
+   relay, with a link to this project.
 6. In the PhoneGate app on your PC, enter `https://relay.example.com` as the relay address.
 
 The *Compose* service type also works: set the compose path to `./deploy/dokploy/docker-compose.yml`,

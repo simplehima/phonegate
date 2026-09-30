@@ -197,3 +197,22 @@ async fn global_mailbox_cap_enforced() {
     tx.send(&[1; 32], b"m2", 60, "d").unwrap();
     assert!(tokio::time::timeout(Duration::from_millis(300), next_msg(&mut rx)).await.is_err());
 }
+
+#[tokio::test]
+async fn landing_page_served_with_strict_headers() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let url = start(Config::default()).await;
+    let mut s = tokio::net::TcpStream::connect(url.trim_start_matches("http://")).await.unwrap();
+    s.write_all(b"GET / HTTP/1.1\r\nHost: relay.test\r\nConnection: close\r\n\r\n").await.unwrap();
+    let mut buf = Vec::new();
+    s.read_to_end(&mut buf).await.unwrap();
+    let resp = String::from_utf8(buf).unwrap();
+    let (head, body) = resp.split_once("\r\n\r\n").unwrap();
+    let head = head.to_ascii_lowercase();
+    assert!(head.starts_with("http/1.1 200"), "{head}");
+    assert!(head.contains("content-type: text/html; charset=utf-8"));
+    assert!(head.contains("content-security-policy: default-src 'none'"));
+    assert!(head.contains("x-content-type-options: nosniff"));
+    assert!(body.contains(r#"href="https://github.com/simplehima/phonegate""#));
+    assert!(!body.to_ascii_lowercase().contains("<script"));
+}

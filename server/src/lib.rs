@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{ConnectInfo, State};
-use axum::http::HeaderMap;
+use axum::http::{header, HeaderMap};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::Router;
@@ -43,9 +43,29 @@ pub fn router(cfg: Config) -> Router {
         }
     });
     Router::new()
+        .route("/", get(landing))
         .route("/healthz", get(|| async { "ok" }))
         .route("/v1/ws", get(ws_handler))
         .with_state(state)
+}
+
+/// Static "nothing to see here" page for people who open the relay address in a browser. It has
+/// no scripts and loads nothing, and the headers forbid both.
+const LANDING_HTML: &str = include_str!("landing.html");
+const LANDING_CSP: &str =
+    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
+async fn landing() -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CONTENT_SECURITY_POLICY, LANDING_CSP),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+            (header::REFERRER_POLICY, "no-referrer"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        LANDING_HTML,
+    )
 }
 
 pub async fn serve(listener: TcpListener, cfg: Config) -> std::io::Result<()> {

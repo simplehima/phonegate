@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="A PhoneGate relay. It passes encrypted messages between paired PCs and phones.">
+<title>PhoneGate relay</title>
+<style>
+:root {
+  --desk: #e3e7ee;
+  --paper: #fcfcfa;
+  --paper-line: #d3d9e3;
+  --text: #1b2130;
+  --label: #4f5666;
+  --canary: #f4c430;
+  --canary-line: #c99a12;
+  --on-canary: #1b2130;
+  --ink: #1f3a93;
+  --ink-strong: #172d75;
+  --on-ink: #fcfcfa;
+  --shadow: 0 1px 0 rgb(27 33 48 / .06), 0 18px 40px -24px rgb(31 58 147 / .35);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --desk: #0d1220;
+    --paper: #172035;
+    --paper-line: #2b3753;
+    --text: #e4e8f0;
+    --label: #a4adbf;
+    --canary: #f4c430;
+    --canary-line: #9c7a2c;
+    --on-canary: #1b2130;
+    --ink: #b3c4ff;
+    --ink-strong: #d3ddff;
+    --on-ink: #0d1220;
+    --shadow: 0 1px 0 rgb(0 0 0 / .3), 0 18px 40px -24px rgb(0 0 0 / .7);
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: var(--desk);
+  color: var(--text);
+  font: 400 1rem/1.55 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+}
+main { width: 100%; max-width: 34rem; }
+.slip {
+  background: var(--paper);
+  border: 1px solid var(--paper-line);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.rail {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--paper-line);
+}
+.mark {
+  font: 700 1.05rem/1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: -.01em;
+}
+.tag {
+  padding: 4px 10px;
+  border: 1px solid var(--canary-line);
+  border-radius: 4px;
+  background: var(--canary);
+  color: var(--on-canary);
+  font-size: .75rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.body { padding: 32px 24px 28px; }
+h1 {
+  margin: 0 0 12px;
+  font: 700 clamp(1.9rem, 6vw, 2.5rem)/1.1 "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  letter-spacing: -.025em;
+}
+.lede { margin: 0 0 24px; max-width: 60ch; color: var(--label); font-size: 1.05rem; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color .2s ease, transform .1s ease;
+}
+.btn:hover { background: var(--ink-strong); }
+.btn:active { transform: translateY(1px); }
+.btn:focus-visible, .foot a:focus-visible { outline: 3px solid var(--canary); outline-offset: 3px; }
+.log { margin: 0; padding: 0 24px; border-top: 1px solid var(--paper-line); }
+.row { display: grid; grid-template-columns: 9.5rem 1fr; gap: 16px; padding: 14px 0; }
+.row + .row { border-top: 1px dashed var(--paper-line); }
+dt { color: var(--label); font-size: .875rem; font-weight: 600; }
+dd { margin: 0; font-size: .95rem; }
+.foot { margin: 16px 4px 0; color: var(--label); font-size: .875rem; }
+.foot a { color: inherit; text-underline-offset: 3px; }
+@media (max-width: 480px) {
+  .row { grid-template-columns: 1fr; gap: 2px; }
+  .body { padding: 28px 20px 24px; }
+  .rail, .log { padding-left: 20px; padding-right: 20px; }
+}
+</style>
+</head>
+<body>
+<main>
+  <article class="slip">
+    <div class="rail">
+      <span class="mark">PhoneGate</span>
+      <span class="tag">Relay</span>
+    </div>
+    <div class="body">
+      <h1>Nothing to see here.</h1>
+      <p class="lede">This server is a PhoneGate relay. It passes encrypted messages between paired PCs and phones, and there is nothing to sign in to.</p>
+      <a class="btn" href="https://github.com/simplehima/phonegate">View on GitHub</a>
+    </div>
+    <dl class="log">
+      <div class="row">
+        <dt>What it sees</dt>
+        <dd>Sealed envelopes, device ids and timing. Never what a request says.</dd>
+      </div>
+      <div class="row">
+        <dt>What it can't do</dt>
+        <dd>Read a request, approve a sign-in, or replay an old approval.</dd>
+      </div>
+      <div class="row">
+        <dt>If it goes down</dt>
+        <dd>Owners still sign in with an offline code or a recovery code.</dd>
+      </div>
+    </dl>
+  </article>
+  <p class="foot">Open source under Apache-2.0. <a href="https://github.com/simplehima/phonegate/blob/main/docs/wiki/Hosting-the-relay.md">Run your own relay</a>.</p>
+</main>
+</body>
+</html>
