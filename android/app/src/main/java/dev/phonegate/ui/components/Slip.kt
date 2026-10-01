@@ -256,6 +256,7 @@ fun outcomeIcon(o: Outcome): ImageVector = when (o) {
     Outcome.Expired -> Icons.Filled.Refresh
     Outcome.RecoveryCode, Outcome.OfflineCode -> Icons.Filled.Lock
     Outcome.Notice, Outcome.PcEvent -> Icons.Filled.Info
+    Outcome.Disabled -> Icons.Filled.Warning
     Outcome.Tamper -> Icons.Filled.Warning
 }
 
@@ -264,7 +265,7 @@ fun outcomeColor(o: Outcome): Color {
     val c = Desk.colors
     return when (o) {
         Outcome.Approved, Outcome.Paired -> c.approved
-        Outcome.Denied, Outcome.Error, Outcome.Tamper -> c.denied
+        Outcome.Denied, Outcome.Error, Outcome.Tamper, Outcome.Disabled -> c.denied
         Outcome.NotMe, Outcome.WrongNumber -> c.onPinkCopy
         else -> c.neutralStamp
     }

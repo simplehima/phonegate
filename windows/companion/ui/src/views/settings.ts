@@ -5,6 +5,7 @@ import { go } from "../nav";
 import { store } from "../store";
 import { confirmDialog } from "./dialog";
 import { errorBlock, page, skeleton } from "./common";
+import { setUpdateCheckEnabled, updateCheckEnabled } from "../updates";
 
 export function settingsView(root: HTMLElement): () => void {
   const section = page(root, "Settings", undefined, "page-settings");
@@ -151,6 +152,21 @@ export function settingsView(root: HTMLElement): () => void {
       unpairMsg,
     );
 
+    // Updates ---------------------------------------------------------------------------------
+    const updId = nextId("upd");
+    const updBox = h("input.check", { id: updId, type: "checkbox", checked: updateCheckEnabled(), "aria-describedby": `${updId}-help` });
+    updBox.addEventListener("change", () => {
+      setUpdateCheckEnabled(updBox.checked);
+      announce(updBox.checked ? "Update checks on." : "Update checks off.");
+    });
+    const updates = h(
+      "section.slip.slip-white.settings-card",
+      { "aria-labelledby": "set-upd-h" },
+      h("h2#set-upd-h", null, "Updates"),
+      h("label.check-row", { for: updId }, updBox, h("span", null, "Check for a newer PhoneGate when this app opens")),
+      h("p.help", { id: `${updId}-help` }, "This is the only time PhoneGate contacts anything besides your relay: one request to GitHub for the latest release number. It never downloads or installs anything by itself."),
+    );
+
     // About -----------------------------------------------------------------------------------
     const about = h(
       "section.slip.slip-white.settings-card",
@@ -165,7 +181,7 @@ export function settingsView(root: HTMLElement): () => void {
       h("p.help", null, "PhoneGate is open source. Fonts: Archivo and JetBrains Mono (SIL Open Font License). Icons: Lucide (ISC). License texts ship with the app in the licenses folder."),
     );
 
-    body.replaceChildren(h("div.settings-grid", null, nameForm, relayForm, pairCard, about));
+    body.replaceChildren(h("div.settings-grid", null, nameForm, relayForm, pairCard, updates, about));
   };
 
   const load = async () => {

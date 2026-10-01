@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use pg_core::crypto::{self, b64, EphemeralKey};
 use pg_core::encoding::Enc;
 use pg_core::envelope::{self, Dir, SealParams};
-use pg_core::messages::{self, ApprovalRequest, ApprovalResponse, BitLocker, Decision, Kind, Notice, NoticeKind, Scenario, Status};
+use pg_core::messages::{self, ApprovalRequest, ApprovalResponse, BitLocker, Command, Decision, Kind, Notice, NoticeKind, Scenario, Status};
 use pg_core::offline::OfflineChallenge;
 use pg_core::pairing::{self, PairJoin, PairOffer, PairingQr, TranscriptInput};
 use pg_core::recovery;
@@ -148,6 +148,16 @@ fn build() -> Value {
     )
     .unwrap();
     let notice_stopped = Notice { kind: NoticeKind::AgentStopped, at: 1_700_000_400_000, detail: "service stop".into() }.encode();
+    // feature 004: a phone-issued disable command, authority = approve key.
+    let cmd = Command::create(&app, pc_id, phone_id, "disable-protection", 1_700_000_000_000, 1_700_000_060_000, [0x6D; 16], [0x7E; 32]).unwrap();
+    let cmd_plain = cmd.encode();
+    let cmd_env = envelope::seal_with(
+        &SealParams { k_pair: &k_pair, dir: Dir::PhoneToPc, kind: Kind::Command, from: phone_id, to: pc_id, signer: &dev },
+        &cmd_plain,
+        [0x8F; 16],
+        [0x90; 12],
+    )
+    .unwrap();
     let mut change_req = req.clone();
     change_req.scenario = Scenario::ChangeSetting;
     change_req.account = "Allow network sign-ins".into();
@@ -204,6 +214,13 @@ fn build() -> Value {
             "challenge_body": hex(&chal.body()),
             "qr": chal.to_qr(&pc).unwrap(),
             "code": chal.response_code(&k_off)
+        },
+        "command": {
+            "auth": hex(&messages::command_auth_bytes(&[0x6D; 16], &[0x7E; 32], "disable-protection", 1_700_000_000_000, 1_700_000_060_000)),
+            "plain": hex(&cmd_plain),
+            "envelope": hex(&cmd_env),
+            "wire": hex(&messages::wire(Kind::Command, &cmd_env)),
+            "update": { "older": "0.1.0", "current": "0.2.0", "newer": "0.3.0" }
         },
         "status": {
             "plain": hex(&status_plain),
@@ -262,4 +279,8 @@ fn vectors_self_consistent() {
     let st = Status::decode(&e.open(&pc_pub, &k, Dir::PcToPhone, &pc_id, &phone_id).unwrap()).unwrap();
     assert_eq!(st.seq, 42);
     assert_eq!(ApprovalRequest::decode(&unhex(&v["status"]["request_change_setting"])).unwrap().scenario, Scenario::ChangeSetting);
+    let ce = envelope::Envelope::parse(&unhex(&v["command"]["envelope"])).unwrap();
+    let cmd = Command::decode(&ce.open(&unhex(&v["keys"]["device_pub"]).try_into().unwrap(), &k, Dir::PhoneToPc, &phone_id, &pc_id).unwrap()).unwrap();
+    assert_eq!(cmd.command, "disable-protection");
+    cmd.verify_auth(&unhex(&v["keys"]["approve_pub"]).try_into().unwrap()).unwrap();
 }

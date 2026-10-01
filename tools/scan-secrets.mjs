@@ -19,7 +19,7 @@ const RULES = [
 
 // Public, non-secret material that legitimately looks like keys: protocol test vectors use fixed
 // throwaway scalars, and the Google attestation roots are public certificates.
-const ALLOW_PATHS = [/^protocol\/vectors\//, /^crates\/pg-core\/roots\/.*\.pem$/, /^tools\/fixtures\/secret-positive\.b64$/];
+const ALLOW_PATHS = [/^protocol\/vectors\//, /^crates\/pg-core\/roots\/.*\.pem$/, /^tools\/fixtures\/secret-positive\.txt$/];
 const BINARY = /\.(png|jpe?g|webp|ico|ttf|otf|woff2?|jar|dll|exe|so|apk|keystore|jks|gif|pdf)$/i;
 
 function scanText(name, text) {
@@ -31,8 +31,7 @@ function scanText(name, text) {
 }
 
 if (process.argv.includes("--self-test")) {
-  // Stored base64-encoded so the fake tokens are not flagged by hosting-side secret scanning.
-  const fixture = Buffer.from(readFileSync(new URL("./fixtures/secret-positive.b64", import.meta.url), "utf8"), "base64").toString("utf8");
+  const fixture = readFileSync(new URL("./fixtures/secret-positive.txt", import.meta.url), "utf8");
   const hits = scanText("fixture", fixture);
   const expected = RULES.length;
   const rulesHit = new Set(hits.map((h) => h.split(": ").pop()));

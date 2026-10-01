@@ -1,9 +1,5 @@
 # PhoneGate
 
-[![Release](https://img.shields.io/github/v/release/simplehima/phonegate)](https://github.com/simplehima/phonegate/releases)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Platforms](https://img.shields.io/badge/platforms-Windows%2010%2F11%20%C2%B7%20Android%2011%2B-informational)](#download)
-
 **Your Windows PC stays locked until you approve the unlock on your Android phone.**
 
 You type your password as usual. Then the PC shows a two-digit number. You type that number into
@@ -26,6 +22,12 @@ the complete source code, has reverse engineered every binary, and controls the 
   minutes and alerts you if PhoneGate is stopped, removed or damaged, or if the PC boots into Safe
   Mode. A watchdog repairs PhoneGate and reports each repair. The companion can also turn on
   BitLocker with a startup PIN and block password-only network sign-ins.
+- **Sign in with your phone (optional).** Opt a PC in and approve on your phone to sign in without
+  typing your password — like an authenticator. Off by default, per PC, with a clear warning
+  (your password is then stored on that PC, hardware-wrapped). See docs/SECURITY.md.
+- **Turn protection off from your phone**, with a fingerprint.
+- **Update checks:** both apps tell you (without auto-installing) when a newer release is published,
+  and the check is off-switchable.
 
 Read **[docs/SECURITY.md](docs/SECURITY.md)** for the exact guarantees and the honest list of
 what no software can protect against (for example, turn on BitLocker with a PIN).
@@ -63,11 +65,10 @@ Step-by-step guides live in the **[wiki](https://github.com/simplehima/phonegate
 | `windows/` | The agent service (TPM keys, approvals), the credential provider DLL, and the companion app for pairing and settings. |
 | `android/` | The approval app (Kotlin, Jetpack Compose). |
 | `server/` + `deploy/` | The relay server and a one-command Docker + Caddy (automatic HTTPS) deployment. |
-| `crates/pg-core` | The protocol, shared by every Rust component. See `docs/specs/001-phone-approved-unlock/contracts/protocol.md`. |
+| `crates/pg-core` | The protocol, shared by every Rust component. See `specs/001-phone-approved-unlock/contracts/protocol.md`. |
 
-More detail is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Specifications (spec, research,
-plan, contracts) are in [docs/specs/](docs/specs/), and the engineering principles in
-[docs/PRINCIPLES.md](docs/PRINCIPLES.md).
+More detail is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The full Spec Kit trail (spec,
+research, plan, contracts, tasks) is in `specs/001-phone-approved-unlock/`.
 
 ## Quick start
 
@@ -103,8 +104,8 @@ One phone can protect several PCs: pair each one the same way.
 
 ```powershell
 winget install JRSoftware.InnoSetup           # once
-.	oolsndroid-release-key.ps1               # once: your own release key, kept OUTSIDE the repo
-.\windows\installeruild-installer.ps1        # -> dist\installer\PhoneGate-Setup-<version>.exe + SHA256SUMS.txt
+  ./tools/android-release-key.ps1            # once: your release key, kept OUTSIDE the repo
+  ./windows/installer/build-installer.ps1    # -> dist/installer/PhoneGate-Setup-<version>.exe + SHA256SUMS.txt
 ```
 
 The build refuses to package a debug-signed APK. Back up `%USERPROFILE%\.phonegate-signing`:

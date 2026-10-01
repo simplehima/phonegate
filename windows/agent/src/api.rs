@@ -37,7 +37,14 @@ pub async fn handle_gate(engine: &Engine, raw: &[u8]) -> Value {
     match v["op"].as_str().unwrap_or("") {
         "status" => {
             let s = engine.gate_status();
-            json!({"ok": true, "enforce": s.enforce, "paired": s.paired, "relay": s.relay, "cooldown_s": s.cooldown_s})
+            json!({"ok": true, "enforce": s.enforce, "paired": s.paired, "relay": s.relay, "cooldown_s": s.cooldown_s, "passwordless": s.passwordless})
+        }
+        "release" => {
+            let Some(id) = req_id(&v, "req") else { return fail("bad_request", "req") };
+            match engine.release(&id) {
+                Ok(ser) => json!({"ok": true, "serialization": pg_core::crypto::b64::encode(&ser)}),
+                Err(code) => fail(code, ""),
+            }
         }
         "begin" => {
             let scenario = match Scenario::parse(str_field(&v, "scenario")) {
@@ -144,6 +151,38 @@ pub async fn handle_control(engine: &Engine, raw: &[u8], security: impl Fn() -> 
             s["ok"] = json!(true);
             s
         }
+        // ---- feature 004: passwordless + update check ----
+        "passwordless_status" => {
+            let (on, account) = engine.passwordless_status();
+            json!({"ok": true, "on": on, "account": account})
+        }
+        "passwordless_enable" => {
+            let (account, password) = (str_field(&v, "account"), str_field(&v, "password"));
+            if account.is_empty() || password.is_empty() {
+                return fail("bad_request", "account and password are required");
+            }
+            match engine.passwordless_enable(account, password) {
+                Ok(b) => json!({"ok": true, "req": b.req, "number": b.number, "expires_in_s": b.expires_in_s}),
+                Err(e) => gate_err(e),
+            }
+        }
+        "passwordless_enable_wait" => {
+            let Some(id) = req_id(&v, "req") else { return fail("bad_request", "req") };
+            let t = v["timeout_ms"].as_u64().unwrap_or(1000).min(2000);
+            match engine.passwordless_enable_wait(&id, Duration::from_millis(t)).await {
+                Ok(s) => json!({"ok": true, "state": s.as_str()}),
+                Err(e) => fail("internal", e),
+            }
+        }
+        "passwordless_disable" => match engine.passwordless_disable() {
+            Ok(()) => json!({"ok": true}),
+            Err(e) => fail("internal", e),
+        },
+        "passwordless_update_password" => match engine.passwordless_update_password(str_field(&v, "password")) {
+            Ok(()) => json!({"ok": true}),
+            Err(Error::State("not_armed")) => fail("not_armed", ""),
+            Err(e) => fail("internal", e),
+        },
         // ---- feature 002 ----
         "health" => {
             let mut h = engine.health_json(watchdog());

@@ -66,6 +66,8 @@ const state = {
   failures: 0,
   // feature 002
   netlogonBlocked: false,
+  passwordless: false,
+  pwPending: null as null | { req: string; startedAt: number },
   netlogonUnblock: null as null | { req: string; startedAt: number },
   bitlocker: (s === "new" ? { supported: false, state: "off" } : { supported: true, state: "off" }) as { supported: boolean; state: string; percent?: number },
   recoveryPassword: null as string | null,
@@ -294,6 +296,27 @@ export async function mockTransport(req: Request): Promise<Record<string, unknow
       log("change-setting", "approved");
       return { ok: true, state: "approved" };
     }
+    case "passwordless_status":
+      return { ok: true, on: state.passwordless, account: state.passwordless ? "DESK\\maya" : undefined };
+    case "passwordless_enable":
+      state.pwPending = { req: "cHJldmlldy1wdy0x", startedAt: Date.now() };
+      return { ok: true, req: state.pwPending.req, number: 27, expires_in_s: 60 };
+    case "passwordless_enable_wait": {
+      await wait(Math.min(req.timeout_ms, 900));
+      const u = state.pwPending;
+      if (!u || u.req !== req.req) return { ok: true, state: "expired" };
+      if (Date.now() - u.startedAt < 12000) return { ok: true, state: "pending" };
+      state.pwPending = null;
+      state.passwordless = true;
+      log("change-setting", "approved");
+      return { ok: true, state: "approved" };
+    }
+    case "passwordless_disable":
+      state.passwordless = false;
+      return { ok: true };
+    case "passwordless_update_password":
+      if (!state.passwordless) return fail("not_armed", "");
+      return { ok: true };
     case "netlogon_unblock_recovery": {
       const i = state.codes.findIndex((c) => norm(c) === norm(req.code));
       if (i < 0) {
@@ -334,4 +357,10 @@ export function mockQrSvg(text: string): string {
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (!inFinder(x, y) && rnd() > 0.52) d += `M${x + 4} ${y + 4}h1v1h-1z`;
   const size = n + 8;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges" role="img" aria-label="Preview QR stand-in, not scannable"><rect width="${size}" height="${size}" fill="#ffffff"/><path fill="#10131a" fill-rule="evenodd" d="${d}"/></svg>`;
+}
+
+/** Preview stand-in for `check_update`. `?update=new` shows the banner. */
+export async function mockUpdate(): Promise<import("./agent").UpdateInfo> {
+  const newer = new URLSearchParams(location.search).get("update") === "new";
+  return { ok: true, current: "0.2.0", latest: newer ? "v0.3.0" : "v0.2.0", newer };
 }

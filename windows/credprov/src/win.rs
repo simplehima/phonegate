@@ -1,18 +1,31 @@
 //! Small Win32 helpers used by the COM objects.
 
 use windows::core::{PCWSTR, PWSTR};
-use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_LOGON_FAILURE, HANDLE};
 use windows::Win32::Graphics::Gdi::{CreateDIBSection, GetDC, ReleaseDC, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP};
-use windows::Win32::Security::Credentials::{CredIsProtectedW, CredUnprotectW, CRED_PROTECTION_TYPE};
-use windows::Win32::Security::{LogonUserW, LOGON32_LOGON_NETWORK, LOGON32_PROVIDER_DEFAULT};
 use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
 use windows::Win32::System::RemoteDesktop::{WTSClientAddress, WTSFreeMemory, WTSQuerySessionInformationW, WTS_CLIENT_ADDRESS, WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION};
 use windows::Win32::UI::Shell::SHStrDupW;
 use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_REMOTESESSION};
-use zeroize::Zeroizing;
 
-use crate::kerb::Credentials;
 use crate::qr::Pixels;
+
+/// Looks up the "Negotiate" authentication package id, which a returned logon serialization must
+/// name (standard credential-provider pattern for passwordless submit, feature 004).
+pub fn negotiate_auth_package() -> windows::core::Result<u32> {
+    use windows::Win32::Security::Authentication::Identity::{LsaConnectUntrusted, LsaDeregisterLogonProcess, LsaLookupAuthenticationPackage, LSA_STRING};
+    // SAFETY: LSA calls with a local handle and a fixed ASCII package name; handle closed after.
+    unsafe {
+        let mut lsa = windows::Win32::Foundation::HANDLE::default();
+        LsaConnectUntrusted(&mut lsa).ok()?;
+        let name = b"Negotiate";
+        let s = LSA_STRING { Length: name.len() as u16, MaximumLength: name.len() as u16, Buffer: windows::core::PSTR(name.as_ptr() as *mut u8) };
+        let mut pkg = 0u32;
+        let r = LsaLookupAuthenticationPackage(lsa, &s, &mut pkg);
+        let _ = LsaDeregisterLogonProcess(lsa);
+        r.ok()?;
+        Ok(pkg)
+    }
+}
 
 /// CoTaskMem-allocated copy of `s` (ownership passes to the caller, per the CP contract).
 pub fn co_str(s: &str) -> windows::core::Result<PWSTR> {
@@ -83,54 +96,6 @@ pub fn remote_client_address() -> String {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Precheck {
-    Ok,
-    WrongPassword,
-    Skipped,
-}
-
-/// Validates the typed credentials locally with a network-type logon (no session is created).
-/// Only a definite `ERROR_LOGON_FAILURE` counts as a wrong password; anything else defers to LSA.
-pub fn precheck(c: &Credentials) -> Precheck {
-    if !c.precheck_supported() {
-        return Precheck::Skipped;
-    }
-    let mut pw: Zeroizing<Vec<u16>> = Zeroizing::new(c.password.to_vec());
-    pw.push(0);
-    // Unprotect if the wrapped provider protected the password (CredUI-style).
-    // SAFETY: NUL-terminated buffers; output buffer sized from the first call.
-    unsafe {
-        let mut prot = CRED_PROTECTION_TYPE(0);
-        if CredIsProtectedW(PCWSTR(pw.as_ptr()), &mut prot).is_ok() && prot.0 != 0 {
-            let mut n = 0u32;
-            let _ = CredUnprotectW(false, &pw[..pw.len() - 1], PWSTR::null(), &mut n);
-            let mut out: Zeroizing<Vec<u16>> = Zeroizing::new(vec![0u16; n as usize + 1]);
-            if CredUnprotectW(false, &pw[..pw.len() - 1], PWSTR(out.as_mut_ptr()), &mut n).is_err() {
-                return Precheck::Skipped;
-            }
-            out.truncate(n as usize);
-            if out.last() != Some(&0) {
-                out.push(0);
-            }
-            pw = out;
-        }
-    }
-    let user: Vec<u16> = c.user.encode_utf16().chain(std::iter::once(0)).collect();
-    let domain: Vec<u16> = c.domain.encode_utf16().chain(std::iter::once(0)).collect();
-    let mut token = HANDLE::default();
-    // SAFETY: NUL-terminated inputs; token closed on success.
-    unsafe {
-        match LogonUserW(PCWSTR(user.as_ptr()), PCWSTR(domain.as_ptr()), PCWSTR(pw.as_ptr()), LOGON32_LOGON_NETWORK, LOGON32_PROVIDER_DEFAULT, &mut token) {
-            Ok(()) => {
-                let _ = CloseHandle(token);
-                Precheck::Ok
-            }
-            Err(_) if GetLastError() == ERROR_LOGON_FAILURE => Precheck::WrongPassword,
-            Err(_) => Precheck::Skipped,
-        }
-    }
-}
 
 /// Converts rendered QR pixels into a 32-bpp top-down DIB section (ownership to LogonUI).
 pub fn bitmap(p: &Pixels) -> windows::core::Result<HBITMAP> {

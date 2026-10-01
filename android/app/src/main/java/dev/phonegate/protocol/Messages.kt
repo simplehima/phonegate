@@ -44,11 +44,15 @@ enum class Kind(val wire: String) {
     Unpair("unpair"),
 
     /** Signed integrity report, PC to phone (feature 002). */
-    Status("status");
+    Status("status"),
+
+    /** Phone-initiated command, phone to PC (feature 004). */
+    Command("command");
 
     /** Kinds that travel inside a sealed envelope (post-pairing). */
     val isSealed: Boolean
-        get() = this == ApprovalRequest || this == ApprovalResponse || this == Cancel || this == Notice || this == Unpair || this == Status
+        get() = this == ApprovalRequest || this == ApprovalResponse || this == Cancel || this == Notice ||
+            this == Unpair || this == Status || this == Command
 
     companion object {
         fun parse(s: String): Kind =
@@ -291,4 +295,85 @@ data class Status(
             )
         }
     }
+}
+
+const val MAX_COMMAND_LIFETIME_MS = 120_000L
+
+/**
+ * The bytes the approve key signs. Independent of pc_id/phone_id so the authority is over the
+ * action, bound by nonce/expiry and verified against this pairing's approve key.
+ */
+fun commandAuthBytes(cmdId: ByteArray, nonce: ByteArray, command: String, issuedAt: Long, expiresAt: Long): ByteArray =
+    Enc("phonegate/v1/command-auth")
+        .bytes(cmdId)
+        .bytes(nonce)
+        .str(command)
+        .u64(issuedAt)
+        .u64(expiresAt)
+        .finish()
+
+/**
+ * A phone-initiated command (phone to PC), e.g. "turn off protection" (feature 004 §1). Its
+ * authority is the biometric-bound approve key, so the device key sealing the envelope is not
+ * enough on its own: the PC verifies [approveSig] against the pinned approve key.
+ */
+data class Command(
+    val cmdId: ByteArray,
+    val nonce: ByteArray,
+    val pcId: ByteArray,
+    val phoneId: ByteArray,
+    val issuedAt: Long,
+    val expiresAt: Long,
+    val command: String,
+    val approveSig: ByteArray,
+) {
+    fun encode(): ByteArray = Enc(LABEL)
+        .bytes(cmdId)
+        .bytes(nonce)
+        .bytes(pcId)
+        .bytes(phoneId)
+        .u64(issuedAt)
+        .u64(expiresAt)
+        .str(command)
+        .bytes(approveSig)
+        .finish()
+
+    /** Verifies the approve-key authority signature over [commandAuthBytes]. */
+    fun verifyAuth(approvePub: ByteArray) {
+        Crypto.verify(approvePub, commandAuthBytes(cmdId, nonce, command, issuedAt, expiresAt), approveSig)
+    }
+
+    companion object {
+        const val LABEL = "phonegate/v1/command"
+        const val DISABLE_PROTECTION = "disable-protection"
+
+        fun decode(b: ByteArray): Command {
+            val f = Enc.decode(b, LABEL, 9)
+            val c = Command(
+                cmdId = f.fixed(1, 16),
+                nonce = f.fixed(2, 32),
+                pcId = f.fixed(3, 32),
+                phoneId = f.fixed(4, 32),
+                issuedAt = f.u64(5),
+                expiresAt = f.u64(6),
+                command = f.string(7),
+                approveSig = f.fixed(8, 64),
+            )
+            if (c.issuedAt < 0 || c.expiresAt <= c.issuedAt || c.expiresAt - c.issuedAt > MAX_COMMAND_LIFETIME_MS) {
+                throw ProtocolException.Decode("invalid command lifetime")
+            }
+            return c
+        }
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is Command) return false
+        return cmdId.contentEquals(other.cmdId) && nonce.contentEquals(other.nonce) &&
+            pcId.contentEquals(other.pcId) && phoneId.contentEquals(other.phoneId) &&
+            issuedAt == other.issuedAt && expiresAt == other.expiresAt &&
+            command == other.command && approveSig.contentEquals(other.approveSig)
+    }
+
+    override fun hashCode(): Int = cmdId.contentHashCode()
 }

@@ -47,6 +47,21 @@ pub fn wait(req: &str, timeout_ms: u64) -> Option<String> {
     call(&json!({"op":"wait","req":req,"timeout_ms":timeout_ms})).ok().and_then(|v| v["state"].as_str().map(str::to_string))
 }
 
+/// Passwordless (004): is phone-only sign-in armed for this PC? Read from the agent's gate status.
+pub fn passwordless_on() -> bool {
+    call(&json!({"op":"status"})).ok().and_then(|v| v["passwordless"].as_bool()).unwrap_or(false)
+}
+
+/// Releases the stored credential for an approved request (one-shot). Returns the packed logon
+/// serialization bytes, or None if the agent declines (then the tile falls back to the password).
+pub fn release(req: &str) -> Option<Vec<u8>> {
+    let v = call(&json!({"op":"release","req":req})).ok()?;
+    if v["ok"] != true {
+        return None;
+    }
+    pg_core::crypto::b64::decode(v["serialization"].as_str()?).ok()
+}
+
 pub fn cancel(req: &str) {
     let _ = call(&json!({"op":"cancel","req":req}));
 }

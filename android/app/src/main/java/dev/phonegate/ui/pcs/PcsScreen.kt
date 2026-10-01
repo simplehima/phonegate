@@ -26,6 +26,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
@@ -77,6 +78,8 @@ data class PcItem(
     val netlogonBlocked: Boolean = false,
     /** Non-null only while the PC is in a tamper-alert episode. */
     val alert: AlertInfo? = null,
+    /** A "turn off protection" request this phone sent that the PC has not confirmed yet. */
+    val disablePending: Boolean = false,
 )
 
 data class Banner(val text: String, val action: String, val onAction: () -> Unit)
@@ -92,10 +95,14 @@ fun PcsScreen(
     onMarkSeen: (String) -> Unit = {},
     openAlertFor: String? = null,
     onOpenHandled: () -> Unit = {},
+    onTurnOff: (String) -> Unit = {},
+    updateChecks: Boolean = true,
+    onUpdateChecks: (Boolean) -> Unit = {},
 ) {
     var renaming by rememberSaveable { mutableStateOf<String?>(null) }
     var unpairing by rememberSaveable { mutableStateOf<String?>(null) }
     var alertFor by rememberSaveable { mutableStateOf<String?>(null) }
+    var turningOff by rememberSaveable { mutableStateOf<String?>(null) }
     // One-shot hand-off from a tapped tamper notification.
     LaunchedEffect(openAlertFor) {
         if (openAlertFor != null) {
@@ -149,10 +156,43 @@ fun PcsScreen(
                     onRename = { renaming = pc.pcId },
                     onUnpair = { unpairing = pc.pcId },
                     onViewAlert = { alertFor = pc.pcId },
+                    onTurnOff = { turningOff = pc.pcId },
                     modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                 )
             }
+            item {
+                Row(
+                    Modifier.widthIn(max = 640.dp).fillMaxWidth().heightIn(min = 48.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Text("Check for updates", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "One request to GitHub when the app opens. Nothing is installed for you.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Switch(checked = updateChecks, onCheckedChange = onUpdateChecks)
+                }
+            }
         }
+    }
+
+    turningOff?.let { id ->
+        val pc = items.firstOrNull { it.pcId == id }
+        AlertDialog(
+            onDismissRequest = { turningOff = null },
+            title = { Text("Turn off protection on ${pc?.name ?: "this PC"}?") },
+            text = {
+                Text(
+                    "You'll confirm with your fingerprint. After that the PC signs in with just its Windows password until you turn protection back on at the PC.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { onTurnOff(id); turningOff = null }) { Text("Continue", color = Desk.colors.denied) }
+            },
+            dismissButton = { TextButton(onClick = { turningOff = null }) { Text("Keep protection on") } },
+        )
     }
 
     renaming?.let { id ->
@@ -202,7 +242,7 @@ fun PcsScreen(
 }
 
 @Composable
-private fun PcRecord(pc: PcItem, onRename: () -> Unit, onUnpair: () -> Unit, onViewAlert: () -> Unit, modifier: Modifier) {
+private fun PcRecord(pc: PcItem, onRename: () -> Unit, onUnpair: () -> Unit, onViewAlert: () -> Unit, onTurnOff: () -> Unit, modifier: Modifier) {
     val c = Desk.colors
     val tamper = pc.state == PcState.TamperAlert
     // On the pink carbon copy every line uses the pink ink so contrast holds in both themes.
@@ -246,8 +286,15 @@ private fun PcRecord(pc: PcItem, onRename: () -> Unit, onUnpair: () -> Unit, onV
         if (pc.netlogonBlocked) {
             WarningLine(Icons.Filled.Info, "Network sign-ins blocked. File shares and remote tools that sign in over the network won't work.", ink)
         }
+        if (pc.disablePending) {
+            Gap(6.dp)
+            WarningLine(Icons.Filled.Info, "Turn-off request sent. Waiting for the PC to confirm.", ink)
+        }
         Gap(4.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (pc.status != PcStatus.NeedsRepair && !pc.disablePending) {
+                TextButton(onClick = onTurnOff, modifier = Modifier.heightIn(min = 48.dp)) { Text("Turn off protection", color = if (tamper) ink else c.denied) }
+            }
             TextButton(onClick = onRename, modifier = Modifier.heightIn(min = 48.dp)) { Text("Rename", color = if (tamper) ink else c.ink) }
             TextButton(onClick = onUnpair, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unpair", color = if (tamper) ink else c.denied) }
         }

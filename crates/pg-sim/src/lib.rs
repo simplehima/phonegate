@@ -8,7 +8,7 @@ use pg_core::attestation::der_writer::{key_description, KdSpec};
 use pg_core::crypto::{self, Id, Pub};
 use pg_core::envelope::{self, Dir, Envelope, SealParams};
 use pg_core::health::{Alert, Health};
-use pg_core::messages::{self, ApprovalRequest, ApprovalResponse, Decision, Kind, Notice, Status};
+use pg_core::messages::{self, ApprovalRequest, ApprovalResponse, Command, Decision, Kind, Notice, Status};
 use pg_core::offline::OfflineChallenge;
 use pg_core::pairing::{self, PhoneKeys, PhonePairing};
 use pg_core::signer::{Signer, SoftSigner};
@@ -263,5 +263,24 @@ impl SimPhone {
         let pc = &self.pcs[pc_index];
         let c = OfflineChallenge::parse_qr(qr, &pc.pc_pub, now)?;
         Ok(c.response_code(&pairing::k_offline(&pc.k_pair)))
+    }
+
+    /// Builds a phone→PC "turn off protection" command (feature 004), its authority signed by the
+    /// chosen key. Use `approve = true` for a genuine command; `false` (device key) for the
+    /// wrong-authority negative test.
+    pub fn disable_command(&self, pc_index: usize, now: u64, approve: bool) -> Result<Vec<u8>> {
+        let pc = &self.pcs[pc_index];
+        let signer: &dyn Signer = if approve { &self.approve } else { &self.device };
+        let cmd = Command::create(
+            signer,
+            pc.pc_id(),
+            self.id(),
+            "disable-protection",
+            now,
+            now + 120_000,
+            crypto::random()?,
+            crypto::random()?,
+        )?;
+        self.seal_to_pc(pc_index, Kind::Command, &cmd.encode())
     }
 }

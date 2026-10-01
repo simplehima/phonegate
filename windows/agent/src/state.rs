@@ -51,6 +51,17 @@ pub struct PcState {
     /// Monotonic status-report sequence (feature 002), persisted so it survives restarts.
     #[serde(default)]
     pub status_seq: u64,
+    /// Passwordless sign-in (feature 004): present and armed only when the owner opted this PC in.
+    #[serde(default)]
+    pub passwordless: Option<Passwordless>,
+}
+
+/// Opt-in passwordless config: the account to sign in and its TPM/DPAPI-wrapped password.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Passwordless {
+    pub account: String,
+    /// base64 of the key-backend-wrapped Windows password. Never plaintext, never logged.
+    pub password_wrapped: String,
 }
 
 impl PcState {
@@ -112,6 +123,7 @@ mod tests {
             enforce: false,
             history: vec![],
             status_seq: 0,
+            passwordless: None,
         };
         let rec = |at| AttemptRecord { at, pc_name: "x".into(), account: "a".into(), scenario: "unlock".into(), outcome: "approved".into(), req_id: None };
         s.push_history(rec(0));

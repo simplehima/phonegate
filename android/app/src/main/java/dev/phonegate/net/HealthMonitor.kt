@@ -9,6 +9,7 @@ import dev.phonegate.data.PhoneStore
 import dev.phonegate.protocol.Alert
 import dev.phonegate.protocol.HealthStep
 import dev.phonegate.protocol.Notice
+import dev.phonegate.protocol.NoticeKind
 import dev.phonegate.protocol.ProtocolException
 import dev.phonegate.protocol.Status
 
@@ -30,6 +31,8 @@ object HealthMonitor {
             return
         }
         apply(context, pc, step, now, event = null)
+        // A report that says protection is off confirms a phone-issued turn-off.
+        if (!st.enforce) confirmDisabled(context, pc, now)
         if (pc.health.inAlert && !step.health.inAlert) {
             // Episode over: the PC reports healthy again.
             Notifications.cancel(context, tamperNotificationId(pcId))
@@ -43,6 +46,15 @@ object HealthMonitor {
         val pc = store.state.value.pc(pcId) ?: return
         val now = System.currentTimeMillis()
         apply(context, pc, pc.health.onNotice(n.kind, n.detail, now), now, event = eventText)
+        if (n.kind == NoticeKind.ProtectionDisabled) confirmDisabled(context, pc, now)
+    }
+
+    /** The PC confirmed it is no longer enforcing: clear the pending request and say so once. */
+    private fun confirmDisabled(context: Context, pc: PairedPc, now: Long) {
+        if (pc.disable == null) return
+        val store = PhoneStore.get(context)
+        store.updatePc(pc.pcId) { it.copy(disable = null) }
+        store.record(AttemptRecord(now, pc.pcName, "", "disable-protection", Outcome.Disabled, detail = "The PC confirmed protection is off."))
     }
 
     /** The 1-minute silence check for every paired PC. */
