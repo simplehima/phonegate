@@ -218,10 +218,36 @@ fn reveal_apk() -> Result<(), String> {
 /// The project's releases page. Fixed here, never supplied by the UI.
 const RELEASES_URL: &str = "https://github.com/simplehima/phonegate/releases";
 
-/// Opens the releases page in the default browser. Takes no input; the URL is the constant above.
+/// The only addresses the UI can ask us to open, by name. The UI never supplies a URL, so a
+/// compromised or buggy page cannot make the (elevated) app launch anything else.
+const LINKS: &[(&str, &str)] = &[
+    ("releases", RELEASES_URL),
+    ("repo", "https://github.com/simplehima/phonegate"),
+    ("license", "https://github.com/simplehima/phonegate/blob/main/LICENSE"),
+    ("security", "https://github.com/simplehima/phonegate/security/advisories/new"),
+    ("issues", "https://github.com/simplehima/phonegate/issues"),
+];
+
+/// The address for a named link, or None when the name is not on the list.
+pub fn link_url(kind: &str) -> Option<&'static str> {
+    LINKS.iter().find(|(name, _)| *name == kind).map(|(_, url)| *url)
+}
+
+/// Opens one of the named project pages in the default browser.
 #[tauri::command]
-fn open_releases() -> Result<(), String> {
-    open_url(RELEASES_URL)
+fn open_link(kind: String) -> Result<(), String> {
+    let url = link_url(&kind).ok_or_else(|| "link_not_allowed".to_string())?;
+    open_url(url)
+}
+
+/// What the About card shows. Read from the build, so it cannot disagree with the binary.
+#[tauri::command]
+fn app_info() -> Value {
+    serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "license": "Apache-2.0",
+        "repo": "https://github.com/simplehima/phonegate",
+    })
 }
 
 /// GitHub's "latest release" endpoint for this project. Fixed here; the UI supplies nothing.
@@ -313,7 +339,7 @@ fn open_explorer_select(_path: &str) -> Result<(), String> {
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![agent, qr_svg, apk_info, reveal_apk, open_releases, check_update])
+        .invoke_handler(tauri::generate_handler![agent, qr_svg, apk_info, reveal_apk, open_link, app_info, check_update])
         .run(tauri::generate_context!())
         .expect("error while running PhoneGate");
 }
@@ -442,6 +468,18 @@ mod tests {
         assert_eq!(sanitize(&json!({"op": "update_check"})).unwrap_err(), "op_not_allowed");
         // An extra field is still refused, so a UI bug can't smuggle a path or flag through.
         assert_eq!(sanitize(&json!({"op": "passwordless_disable", "account": "a"})).unwrap_err(), "field_not_allowed:account");
+    }
+
+    #[test]
+    fn only_named_project_links_open() {
+        for name in ["releases", "repo", "license", "security", "issues"] {
+            let url = link_url(name).unwrap_or_else(|| panic!("{name} should be allowed"));
+            assert!(url.starts_with("https://github.com/simplehima/phonegate"), "{name} -> {url}");
+        }
+        // Anything else, including a URL smuggled in as the name, is refused.
+        for bad in ["", "RELEASES", "releases ", "https://evil.example", "file:///c:/windows/system32/calc.exe", "..", "releases&calc"] {
+            assert!(link_url(bad).is_none(), "{bad:?} must not be allowed");
+        }
     }
 
     #[test]

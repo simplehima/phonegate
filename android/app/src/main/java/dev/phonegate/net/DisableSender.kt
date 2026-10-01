@@ -31,6 +31,9 @@ object DisableSender {
         /** The relay accepted it. The PC applies it now, or when it next connects. */
         data object Sent : Outcome2()
         data class Failed(val reason: String) : Outcome2()
+
+        /** The owner dismissed the fingerprint prompt. Nothing was sent. */
+        data object Cancelled : Outcome2()
     }
 
     /**
@@ -85,7 +88,7 @@ object DisableSender {
                 }
             },
             onFailure = { msg, cancelled ->
-                if (!cancelled) onResult(Outcome2.Failed(msg))
+                onResult(if (cancelled) Outcome2.Cancelled else Outcome2.Failed(msg))
             },
         )
     }

@@ -364,3 +364,8 @@ export async function mockUpdate(): Promise<import("./agent").UpdateInfo> {
   const newer = new URLSearchParams(location.search).get("update") === "new";
   return { ok: true, current: "0.2.0", latest: newer ? "v0.3.0" : "v0.2.0", newer };
 }
+
+/** Preview stand-in for `app_info`. */
+export async function mockAppInfo(): Promise<import("./agent").AppInfo> {
+  return { version: "0.3.0", license: "Apache-2.0", repo: "https://github.com/simplehima/phonegate" };
+}

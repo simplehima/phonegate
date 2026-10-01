@@ -26,7 +26,15 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.contentDescription
@@ -80,6 +88,8 @@ data class PcItem(
     val alert: AlertInfo? = null,
     /** A "turn off protection" request this phone sent that the PC has not confirmed yet. */
     val disablePending: Boolean = false,
+    /** Non-null while something this phone started on the PC is in progress, for example "Waiting for your fingerprint". */
+    val busy: String? = null,
 )
 
 data class Banner(val text: String, val action: String, val onAction: () -> Unit)
@@ -96,13 +106,15 @@ fun PcsScreen(
     openAlertFor: String? = null,
     onOpenHandled: () -> Unit = {},
     onTurnOff: (String) -> Unit = {},
-    updateChecks: Boolean = true,
-    onUpdateChecks: (Boolean) -> Unit = {},
 ) {
     var renaming by rememberSaveable { mutableStateOf<String?>(null) }
     var unpairing by rememberSaveable { mutableStateOf<String?>(null) }
     var alertFor by rememberSaveable { mutableStateOf<String?>(null) }
     var turningOff by rememberSaveable { mutableStateOf<String?>(null) }
+    // Cards the owner opened or closed against the default (see PcListLogic).
+    var flipped by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    val ordered = PcListLogic.ordered(items)
+    val defaults = PcListLogic.defaultExpanded(items)
     // One-shot hand-off from a tapped tamper notification.
     LaunchedEffect(openAlertFor) {
         if (openAlertFor != null) {
@@ -150,30 +162,35 @@ fun PcsScreen(
                     }
                 }
             }
-            items(items, key = { it.pcId }) { pc ->
+            if (items.size > 1) {
+                item(key = "summary") {
+                    val allOpen = ordered.all { PcListLogic.isExpanded(it.pcId, defaults, flipped) }
+                    Row(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            PcListLogic.headline(items),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
+                        )
+                        TextButton(
+                            onClick = { flipped = PcListLogic.flipTo(!allOpen, ordered, defaults, flipped) },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text(if (allOpen) "Collapse all" else "Expand all", maxLines = 1) }
+                    }
+                }
+            }
+            items(ordered, key = { it.pcId }) { pc ->
+                val expanded = items.size <= 1 || PcListLogic.isExpanded(pc.pcId, defaults, flipped)
                 PcRecord(
                     pc,
+                    expanded = expanded,
+                    collapsible = items.size > 1,
+                    onToggle = { flipped = if (pc.pcId in flipped) flipped - pc.pcId else flipped + pc.pcId },
                     onRename = { renaming = pc.pcId },
                     onUnpair = { unpairing = pc.pcId },
                     onViewAlert = { alertFor = pc.pcId },
                     onTurnOff = { turningOff = pc.pcId },
                     modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                 )
-            }
-            item {
-                Row(
-                    Modifier.widthIn(max = 640.dp).fillMaxWidth().heightIn(min = 48.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                        Text("Check for updates", style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            "One request to GitHub when the app opens. Nothing is installed for you.",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                    Switch(checked = updateChecks, onCheckedChange = onUpdateChecks)
-                }
             }
         }
     }
@@ -242,17 +259,61 @@ fun PcsScreen(
 }
 
 @Composable
-private fun PcRecord(pc: PcItem, onRename: () -> Unit, onUnpair: () -> Unit, onViewAlert: () -> Unit, onTurnOff: () -> Unit, modifier: Modifier) {
+private fun PcRecord(
+    pc: PcItem,
+    expanded: Boolean,
+    collapsible: Boolean,
+    onToggle: () -> Unit,
+    onRename: () -> Unit,
+    onUnpair: () -> Unit,
+    onViewAlert: () -> Unit,
+    onTurnOff: () -> Unit,
+    modifier: Modifier,
+) {
     val c = Desk.colors
     val tamper = pc.state == PcState.TamperAlert
     // On the pink carbon copy every line uses the pink ink so contrast holds in both themes.
     val ink = if (tamper) c.onPinkCopy else c.onRecord
     val label = if (tamper) c.onPinkCopy else c.recordLabel
     RecordSheet(modifier, tint = if (tamper) c.pinkCopy else c.record) {
-        Row(verticalAlignment = Alignment.Top) {
-            Text(pc.name, style = MaterialTheme.typography.titleLarge, color = ink, modifier = Modifier.weight(1f).padding(end = 12.dp))
+        // Header: the whole row toggles when there are several PCs.
+        val header = Modifier
+            .fillMaxWidth()
+            .then(
+                if (collapsible) {
+                    Modifier
+                        .clickable(onClickLabel = if (expanded) "Collapse ${pc.name}" else "Expand ${pc.name}", onClick = onToggle)
+                        .semantics { stateDescription = if (expanded) "Expanded" else "Collapsed" }
+                } else {
+                    Modifier
+                },
+            )
+            .heightIn(min = 48.dp)
+        Row(header, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(pc.name, style = MaterialTheme.typography.titleLarge, color = ink, maxLines = if (expanded) 3 else 1, overflow = TextOverflow.Ellipsis)
+                if (!expanded) {
+                    Text(
+                        shortLink(pc) + if (pc.lastReport.isNotBlank()) ", last report ${pc.lastReport}" else "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             HealthStamp(pc.state)
+            if (collapsible) {
+                Icon(
+                    if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = ink,
+                    modifier = Modifier.padding(start = 6.dp).size(24.dp),
+                )
+            }
         }
+        if (!expanded) return@RecordSheet
+
         val alert = pc.alert
         if (alert != null) {
             Gap(10.dp)
@@ -276,6 +337,13 @@ private fun PcRecord(pc: PcItem, onRename: () -> Unit, onUnpair: () -> Unit, onV
         }
         GridRow("Last report", pc.lastReport, valueColor = ink, labelColor = label)
         GridRow("Link", linkText, valueColor = linkColor, labelColor = label)
+        if (pc.status == PcStatus.Connecting) {
+            LinearProgressIndicator(
+                Modifier.fillMaxWidth().padding(vertical = 4.dp).semantics { contentDescription = "Connecting to the relay" },
+                color = ink,
+                trackColor = label.copy(alpha = 0.2f),
+            )
+        }
         GridRow("Relay", pc.relay, mono = true, valueColor = ink, labelColor = label)
         GridRow("Paired", pc.paired, valueColor = ink, labelColor = label)
         GridRow("Keys", pc.keys, valueColor = ink, labelColor = label)
@@ -290,15 +358,47 @@ private fun PcRecord(pc: PcItem, onRename: () -> Unit, onUnpair: () -> Unit, onV
             Gap(6.dp)
             WarningLine(Icons.Filled.Info, "Turn-off request sent. Waiting for the PC to confirm.", ink)
         }
-        Gap(4.dp)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (pc.status != PcStatus.NeedsRepair && !pc.disablePending) {
-                TextButton(onClick = onTurnOff, modifier = Modifier.heightIn(min = 48.dp)) { Text("Turn off protection", color = if (tamper) ink else c.denied) }
+        if (pc.busy != null) {
+            Gap(6.dp)
+            Row(
+                Modifier.fillMaxWidth().semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = ink)
+                Spacer(Modifier.width(10.dp))
+                Text(pc.busy, style = MaterialTheme.typography.bodyMedium, color = ink)
             }
-            TextButton(onClick = onRename, modifier = Modifier.heightIn(min = 48.dp)) { Text("Rename", color = if (tamper) ink else c.ink) }
-            TextButton(onClick = onUnpair, modifier = Modifier.heightIn(min = 48.dp)) { Text("Unpair", color = if (tamper) ink else c.denied) }
+        }
+        Gap(8.dp)
+        val idle = pc.busy == null
+        // Turn off sits on its own line: three text buttons in one row wrapped "Unpair" at normal
+        // widths. Rename and Unpair share the next line equally and never wrap.
+        if (pc.status != PcStatus.NeedsRepair && !pc.disablePending) {
+            OutlinedButton(
+                onClick = onTurnOff,
+                enabled = idle,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = MaterialTheme.shapes.small,
+            ) { Text("Turn off protection", color = if (tamper) ink else c.denied, maxLines = 1) }
+            Gap(4.dp)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = onRename, enabled = idle, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                Text("Rename", color = if (tamper) ink else c.ink, maxLines = 1)
+            }
+            TextButton(onClick = onUnpair, enabled = idle, modifier = Modifier.weight(1f).heightIn(min = 48.dp)) {
+                Text("Unpair", color = if (tamper) ink else c.denied, maxLines = 1)
+            }
         }
     }
+}
+
+/** The one-line link summary shown on a collapsed row. */
+private fun shortLink(pc: PcItem): String = when (pc.status) {
+    PcStatus.Connected -> "Listening"
+    PcStatus.Connecting -> "Connecting"
+    PcStatus.Offline -> "Relay unreachable"
+    PcStatus.NeedsRepair -> "Needs pairing again"
 }
 
 @Composable

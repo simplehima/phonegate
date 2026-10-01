@@ -14,7 +14,11 @@ import java.util.concurrent.TimeUnit
  * or installs anything, can be switched off, and says nothing when it fails.
  */
 object UpdateChecker {
-    const val RELEASES_URL = "https://github.com/simplehima/phonegate/releases"
+    const val REPO_URL = "https://github.com/simplehima/phonegate"
+    const val RELEASES_URL = "$REPO_URL/releases"
+    const val LICENSE_URL = "$REPO_URL/blob/main/LICENSE"
+    const val SECURITY_URL = "$REPO_URL/security/advisories/new"
+    const val ISSUES_URL = "$REPO_URL/issues"
     private const val LATEST_URL = "https://api.github.com/repos/simplehima/phonegate/releases/latest"
     private const val PREFS = "phonegate_prefs"
     private const val KEY = "update_checks"
@@ -32,17 +36,27 @@ object UpdateChecker {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY, on).apply()
     }
 
-    /** The release tag if it is strictly newer than [current]; null when not newer or on any failure. */
-    suspend fun newerRelease(current: String): String? = withContext(Dispatchers.IO) {
+    /** Outcome of one look at GitHub. */
+    sealed class Result {
+        data class Newer(val tag: String) : Result()
+        data class Current(val tag: String) : Result()
+        data object Failed : Result()
+    }
+
+    /** One look at the latest release; never throws, never shows an error to the owner by itself. */
+    suspend fun check(current: String): Result = withContext(Dispatchers.IO) {
         try {
             val req = Request.Builder().url(LATEST_URL).header("Accept", "application/vnd.github+json").build()
             http.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@withContext null
-                val tag = Update.parseLatestTag(resp.body?.string().orEmpty()) ?: return@withContext null
-                tag.takeIf { Update.isNewer(current, it) }
+                if (!resp.isSuccessful) return@withContext Result.Failed
+                val tag = Update.parseLatestTag(resp.body?.string().orEmpty()) ?: return@withContext Result.Failed
+                if (Update.isNewer(current, tag)) Result.Newer(tag) else Result.Current(tag)
             }
         } catch (e: Exception) {
-            null
+            Result.Failed
         }
     }
+
+    /** The release tag if it is strictly newer than [current]; null when not newer or on any failure. */
+    suspend fun newerRelease(current: String): String? = (check(current) as? Result.Newer)?.tag
 }

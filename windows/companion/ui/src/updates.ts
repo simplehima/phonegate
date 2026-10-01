@@ -1,7 +1,7 @@
 // Update check preference and result. The check is the only request this app makes outside the
 // relay, so it can be switched off; the choice is a per-viewer convenience (storage may fail).
 
-import { checkUpdate, openReleases, type UpdateInfo } from "./agent";
+import { checkUpdate, openLink, type UpdateInfo } from "./agent";
 import { button, h, notice } from "./dom";
 
 const KEY = "phonegate.updatecheck";
@@ -31,6 +31,12 @@ export function updateResult(): Promise<UpdateInfo> {
   return result;
 }
 
+/** A fresh look at GitHub, for the Settings "Check now" button (ignores the once-per-launch cache). */
+export function checkUpdateNow(): Promise<UpdateInfo> {
+  result = checkUpdate();
+  return result;
+}
+
 /** A banner for a newer release, or null. Never installs anything; it opens the releases page. */
 export async function updateBanner(): Promise<HTMLElement | null> {
   const u = await updateResult();
@@ -42,7 +48,7 @@ export async function updateBanner(): Promise<HTMLElement | null> {
       "info",
       `PhoneGate ${u.latest.replace(/^v/i, "")} is available`,
       `You have ${u.current}. Download the new setup and the phone app from the releases page, then run the setup over this install.`,
-      button("Open releases page", { kind: "secondary", icon: "arrow-right", onClick: () => void openReleases() }),
+      button("Open releases page", { kind: "secondary", icon: "arrow-right", onClick: () => void openLink("releases") }),
     ),
   );
 }

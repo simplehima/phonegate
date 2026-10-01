@@ -64,6 +64,7 @@ try {
     Copy-Item 'target\release\phonegate_cp.dll' $Stage
     Copy-Item 'windows\companion\src-tauri\target\release\phonegate-companion.exe' (Join-Path $Stage 'PhoneGate.exe')
     Copy-Item 'LICENSE' (Join-Path $Stage 'LICENSE.txt')
+    Copy-Item 'NOTICE' (Join-Path $Stage 'NOTICE.txt')
     Copy-Item 'windows\scripts\install.ps1', 'windows\scripts\uninstall.ps1' (Join-Path $Stage 'scripts')
     Copy-Item $apk (Join-Path $Stage 'Android\PhoneGate.apk')
     Copy-Item 'windows\installer\phone-app-guide.txt' (Join-Path $Stage 'Android\How to install on your phone.txt')

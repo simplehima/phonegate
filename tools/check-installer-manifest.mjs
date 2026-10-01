@@ -8,6 +8,7 @@ const REQUIRED = [
   "phonegate_cp.dll",
   "PhoneGate.exe",
   "LICENSE.txt",
+  "NOTICE.txt",
   "install.ps1",
   "uninstall.ps1",
   "PhoneGate.apk",

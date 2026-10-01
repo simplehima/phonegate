@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -44,10 +45,17 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import dev.phonegate.data.PhoneStore
 import android.widget.Toast
 import dev.phonegate.net.DisableSender
 import dev.phonegate.net.UpdateChecker
+import dev.phonegate.ui.settings.PermissionRow
+import dev.phonegate.ui.settings.SettingsLinks
+import dev.phonegate.ui.settings.SettingsScreen
+import dev.phonegate.ui.settings.UpdateUi
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.runtime.mutableStateMapOf
 import dev.phonegate.net.HealthMonitor
 import dev.phonegate.net.Notifications
 import dev.phonegate.net.RelayHub
@@ -153,9 +161,24 @@ private fun AppRoot(activity: FragmentActivity, startTab: Int, alertPc: String?,
     val offline = remember { OfflineController(activity) }
     val offlineState by offline.state.collectAsState()
 
+    val busyPcs = remember { mutableStateMapOf<String, String>() }
     var updateChecks by remember { mutableStateOf(UpdateChecker.enabled(activity)) }
     var newer by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(updateChecks) { newer = if (updateChecks) UpdateChecker.newerRelease(activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "0") else null }
+    var updateUi by remember { mutableStateOf<UpdateUi>(UpdateUi.Idle) }
+    val installed = remember { activity.packageManager.getPackageInfo(activity.packageName, 0) }
+    val versionName = installed.versionName ?: "0"
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(updateChecks) { newer = if (updateChecks) UpdateChecker.newerRelease(versionName) else null }
+    val checkNow: () -> Unit = {
+        updateUi = UpdateUi.Checking
+        scope.launch {
+            updateUi = when (val r = UpdateChecker.check(versionName)) {
+                is UpdateChecker.Result.Newer -> { newer = r.tag; UpdateUi.Available(r.tag) }
+                is UpdateChecker.Result.Current -> UpdateUi.UpToDate(versionName)
+                UpdateChecker.Result.Failed -> UpdateUi.Failed
+            }
+        }
+    }
 
     val banners = run {
         @Suppress("UNUSED_EXPRESSION") resumeTick
@@ -177,6 +200,11 @@ private fun AppRoot(activity: FragmentActivity, startTab: Int, alertPc: String?,
         ) {
             list += Banner("Allow full-screen alerts so a request opens straight away, even when the phone is locked.", "Open settings") {
                 activity.startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, ("package:" + activity.packageName).toUri()))
+            }
+        }
+        if (!Settings.canDrawOverlays(activity)) {
+            list += Banner("Allow PhoneGate to show over other apps so a sign-in request can open right away, even while you are using another app.", "Allow") {
+                activity.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, ("package:" + activity.packageName).toUri()))
             }
         }
         list
@@ -202,6 +230,7 @@ private fun AppRoot(activity: FragmentActivity, startTab: Int, alertPc: String?,
             bitlockerOff = pc.health.bitlockerOff,
             netlogonBlocked = pc.health.netlogonBlocked,
             disablePending = pc.disable != null,
+            busy = busyPcs[pc.pcId],
             alert = pc.alert?.takeIf { pc.health.inAlert }?.let {
                 AlertInfo(
                     message = it.message,
@@ -228,6 +257,7 @@ private fun AppRoot(activity: FragmentActivity, startTab: Int, alertPc: String?,
             item(selected = tab == 0, onClick = { tab = 0 }, icon = { Icon(Icons.Filled.Home, null) }, label = { Text("PCs") })
             item(selected = tab == 1, onClick = { tab = 1 }, icon = { Icon(Icons.AutoMirrored.Filled.List, null) }, label = { Text("History") })
             item(selected = tab == 2, onClick = { tab = 2 }, icon = { Icon(Icons.Filled.Lock, null) }, label = { Text("Offline code") })
+            item(selected = tab == 3, onClick = { tab = 3 }, icon = { Icon(Icons.Filled.Settings, null) }, label = { Text("Settings") })
         },
         containerColor = MaterialTheme.colorScheme.background,
     ) {
@@ -238,25 +268,45 @@ private fun AppRoot(activity: FragmentActivity, startTab: Int, alertPc: String?,
                 banners = banners,
                 onAdd = { pairing = true },
                 onRename = store::rename,
-                onUnpair = { id -> unpair(activity, id) },
+                onUnpair = { id ->
+                    busyPcs[id] = "Unpairing..."
+                    unpair(activity, id) { busyPcs.remove(id) }
+                },
                 modifier = m,
                 onMarkSeen = { id -> HealthMonitor.markSeen(activity, id) },
                 openAlertFor = alertPc,
                 onOpenHandled = onAlertShown,
                 onTurnOff = { id ->
+                    busyPcs[id] = "Waiting for your fingerprint..."
                     DisableSender.requestDisable(activity, id) { r ->
+                        busyPcs.remove(id)
                         val msg = when (r) {
                             is DisableSender.Outcome2.Sent -> "Turn-off request sent."
                             is DisableSender.Outcome2.Failed -> r.reason
+                            DisableSender.Outcome2.Cancelled -> null
                         }
-                        Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
+                        if (msg != null) Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
                     }
                 },
-                updateChecks = updateChecks,
-                onUpdateChecks = { on -> UpdateChecker.setEnabled(activity, on); updateChecks = on },
             )
             1 -> HistoryScreen(history, m)
-            else -> OfflineScreen(offlineState, offline::onScanned, { offline.unlock(activity) }, offline::reset, m)
+            2 -> OfflineScreen(offlineState, offline::onScanned, { offline.unlock(activity) }, offline::reset, m)
+            else -> SettingsScreen(
+                versionName = versionName,
+                versionCode = installed.longVersionCode,
+                updateChecks = updateChecks,
+                onUpdateChecks = { on ->
+                    UpdateChecker.setEnabled(activity, on)
+                    updateChecks = on
+                    if (!on) { newer = null; updateUi = UpdateUi.Idle }
+                },
+                update = updateUi,
+                onCheckNow = checkNow,
+                permissions = remember(resumeTick) { permissionRows(activity, notifLauncher::launch) },
+                links = SettingsLinks(UpdateChecker.REPO_URL, UpdateChecker.RELEASES_URL, UpdateChecker.LICENSE_URL, UpdateChecker.SECURITY_URL, UpdateChecker.ISSUES_URL),
+                onOpenLink = { url -> activity.startActivity(Intent(Intent.ACTION_VIEW, url.toUri())) },
+                modifier = m,
+            )
         }
     }
     LaunchedEffect(state.pcs.size) { RelayService.startIfPaired(activity) }
@@ -273,7 +323,7 @@ private fun lastReportText(everReported: Boolean, lastSeenAt: Long, now: Long): 
     return if (everReported) ago else "No report yet (tracking since $ago)"
 }
 
-private fun unpair(activity: FragmentActivity, pcId: String) {
+private fun unpair(activity: FragmentActivity, pcId: String, done: () -> Unit = {}) {
     val app = activity.applicationContext
     CoroutineScope(Dispatchers.IO).launch {
         // Best effort: tell the PC first (signed with the device key), then delete local keys.
@@ -284,5 +334,36 @@ private fun unpair(activity: FragmentActivity, pcId: String) {
             store.record(dev.phonegate.data.AttemptRecord(System.currentTimeMillis(), pc.pcName, "", "", dev.phonegate.data.Outcome.Unpaired, detail = "Unpaired from this phone"))
         }
         RelayHub.sync(app)
+        withContext(Dispatchers.Main) { done() }
     }
+}
+
+/** The permissions PhoneGate uses, each with why it is asked for and how to grant it. */
+private fun permissionRows(activity: FragmentActivity, requestNotifications: (String) -> Unit): List<PermissionRow> {
+    val rows = ArrayList<PermissionRow>()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        rows += PermissionRow(
+            "Notifications",
+            "Sign-in requests and tamper alerts arrive as notifications.",
+            ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED,
+        ) { requestNotifications(Manifest.permission.POST_NOTIFICATIONS) }
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        rows += PermissionRow(
+            "Full-screen alerts",
+            "Lets a request open straight away when the phone is locked.",
+            activity.getSystemService(NotificationManager::class.java).canUseFullScreenIntent(),
+        ) { activity.startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, ("package:" + activity.packageName).toUri())) }
+    }
+    rows += PermissionRow(
+        "Show over other apps",
+        "Lets a request pop up on top of whatever you are doing.",
+        Settings.canDrawOverlays(activity),
+    ) { activity.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, ("package:" + activity.packageName).toUri())) }
+    rows += PermissionRow(
+        "Camera",
+        "Only to read the QR code on your PC screen.",
+        ContextCompat.checkSelfPermission(activity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
+    ) { activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, ("package:" + activity.packageName).toUri())) }
+    return rows
 }

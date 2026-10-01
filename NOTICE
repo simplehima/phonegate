@@ -1,0 +1,24 @@
+PhoneGate
+Copyright 2026 the PhoneGate contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+Source: https://github.com/simplehima/phonegate
+
+PhoneGate keeps no secrets in its source code or builds. Every key is generated on the
+owner's own devices.
+
+Third-party software and assets included in PhoneGate builds:
+
+  Fonts
+    Archivo                  SIL Open Font License 1.1
+    JetBrains Mono           SIL Open Font License 1.1
+  Desktop app icons
+    Lucide                   ISC License
+  Rust crates                Apache License 2.0 and/or MIT (see Cargo.lock for the full list;
+                             RustCrypto, axum, tokio, Tauri, windows-rs, qrcode and others)
+  Phone app libraries        Apache License 2.0
+    AndroidX (Jetpack Compose, CameraX, Biometric, Lifecycle), OkHttp, ZXing
+
+The Android attestation root certificates in crates/pg-core/roots are Google's public
+certificates. License texts for the bundled fonts and icons ship with the Windows app in the
+licenses folder.

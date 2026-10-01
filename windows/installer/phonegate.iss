@@ -64,6 +64,7 @@ Source: "{#Stage}\phonegate-agent.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\phonegate_cp.dll"; DestDir: "{app}"; Flags: ignoreversion restartreplace uninsrestartdelete
 Source: "{#Stage}\PhoneGate.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\LICENSE.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#Stage}\NOTICE.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#Stage}\scripts\install.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#Stage}\scripts\uninstall.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#Stage}\Android\PhoneGate.apk"; DestDir: "{app}\Android"; Flags: ignoreversion

@@ -35,6 +35,10 @@ import dev.phonegate.ui.pcs.AlertInfo
 import dev.phonegate.ui.pcs.PcItem
 import dev.phonegate.ui.pcs.PcStatus
 import dev.phonegate.ui.pcs.PcsScreen
+import dev.phonegate.ui.settings.PermissionRow
+import dev.phonegate.ui.settings.SettingsLinks
+import dev.phonegate.ui.settings.SettingsScreen
+import dev.phonegate.ui.settings.UpdateUi
 import dev.phonegate.ui.theme.Desk
 import dev.phonegate.ui.theme.PhoneGateTheme
 
@@ -44,7 +48,7 @@ import dev.phonegate.ui.theme.PhoneGateTheme
  * so nothing can be signed, approved or sent from here.
  *
  * adb shell am start -n dev.phonegate/dev.phonegate.preview.PreviewActivity --es screen approve
- * screens: approve, approve_wrong, expired, done, sas, pcs, tamper, history, offline
+ * screens: approve, approve_wrong, expired, done, sas, pcs, pcs_many, settings, tamper, history, offline
  */
 class PreviewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -132,6 +136,36 @@ private fun Screen(screen: String, start: Long) {
             onAdd = noop,
             onRename = { _, _ -> },
             onUnpair = {},
+        )
+        "pcs_many" -> PcsScreen(
+            items = listOf(
+                PcItem("a", "Sample Desk PC", "relay.example.org", "Sep 12, 2026", "StrongBox, attested at pairing", PcStatus.Connected, lastReport = "2 min ago"),
+                PcItem("b", "Sample Laptop", "relay.example.org", "Aug 30, 2026", "Secure hardware (TEE), attested at pairing", PcStatus.Connecting, lastReport = "No report yet", busy = "Waiting for your fingerprint..."),
+                PcItem(
+                    "c", "Sample Studio PC", "relay.example.org", "Aug 2, 2026", "StrongBox, attested at pairing", PcStatus.Connected,
+                    state = PcState.TamperAlert, lastReport = "3 min ago",
+                    alert = AlertInfo("PhoneGate on Sample Studio PC was stopped.", "9/27/26, 9:41 AM", null),
+                ),
+                PcItem("d", "Sample Office PC", "relay.example.org", "Jul 11, 2026", "Secure hardware (TEE), attested at pairing", PcStatus.Offline, state = PcState.Asleep, lastReport = "42 min ago"),
+            ),
+            banners = emptyList(),
+            onAdd = noop,
+            onRename = { _, _ -> },
+            onUnpair = {},
+        )
+        "settings" -> SettingsScreen(
+            versionName = "0.3.0",
+            versionCode = 4,
+            updateChecks = true,
+            onUpdateChecks = {},
+            update = UpdateUi.Checking,
+            onCheckNow = {},
+            permissions = listOf(
+                PermissionRow("Notifications", "Sign-in requests and tamper alerts arrive as notifications.", true) {},
+                PermissionRow("Show over other apps", "Lets a request pop up on top of whatever you are doing.", false) {},
+            ),
+            links = SettingsLinks("r", "r", "r", "r", "r"),
+            onOpenLink = {},
         )
         "history" -> HistoryScreen(
             listOf(

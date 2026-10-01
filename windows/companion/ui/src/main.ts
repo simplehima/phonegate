@@ -1,5 +1,5 @@
 import "./styles.css";
-import { previewMode } from "./agent";
+import { onBusy, previewMode } from "./agent";
 import { h, icon, type IconName } from "./dom";
 import { store } from "./store";
 import { statusView } from "./views/status";
@@ -128,7 +128,23 @@ function shell(): void {
   }
   nav.append(list, h("div.rail-foot", null, themeSwitch()));
   main = h("main#main", { tabindex: "-1" });
-  app.append(h("div.shell", null, nav, main));
+  // Thin bar across the top while the agent is working. It only appears if a request takes
+  // longer than a moment, so quick answers do not flash it.
+  const bar = h("div.busy-bar", { role: "progressbar", "aria-label": "Working", "aria-hidden": "true" }, h("span.busy-bar-fill"));
+  let showTimer = 0;
+  onBusy((n) => {
+    window.clearTimeout(showTimer);
+    if (n > 0) {
+      showTimer = window.setTimeout(() => {
+        bar.classList.add("busy-on");
+        bar.setAttribute("aria-hidden", "false");
+      }, 250);
+    } else {
+      bar.classList.remove("busy-on");
+      bar.setAttribute("aria-hidden", "true");
+    }
+  });
+  app.append(bar, h("div.shell", null, nav, main));
 
   document.querySelector<HTMLAnchorElement>(".skip-link")!.addEventListener("click", (e) => {
     e.preventDefault();

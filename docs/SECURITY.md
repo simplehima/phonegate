@@ -87,6 +87,11 @@ What PhoneGate guarantees instead is that **removal or tampering cannot happen s
   plain, unauthenticated GET to `api.github.com` for the latest release tag, off-switchable, never
   auto-install, and silent on failure. The SYSTEM agent never makes this call — only the companion
   and the phone app do.
+- **"Show over other apps" on the phone** is optional. It only lets a sign-in request open on top
+  of the app you are using. A permission like this is also what a malicious app would use to draw
+  a fake button over a real one, so the approval screen drops any touch that arrives while another
+  window covers it (`filterTouchesWhenObscured`). Approving still needs your fingerprint and the
+  number typed from the PC screen, which an overlay cannot supply.
 
 ## 5. Residual risks (software cannot close these)
 

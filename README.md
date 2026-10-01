@@ -27,36 +27,13 @@ the complete source code, has reverse engineered every binary, and controls the 
   (your password is then stored on that PC, hardware-wrapped). See docs/SECURITY.md.
 - **Turn protection off from your phone**, with a fingerprint.
 - **Update checks:** both apps tell you (without auto-installing) when a newer release is published,
-  and the check is off-switchable.
+  and the check is off-switchable. Both apps have an About and Settings page with the version,
+  licence, a "Check now" button and links to the release notes.
+- **Many PCs, one phone:** the phone's PC list collapses to one line per PC (the ones that need you
+  open first), with loading indicators while it connects or waits for your fingerprint.
 
 Read **[docs/SECURITY.md](docs/SECURITY.md)** for the exact guarantees and the honest list of
 what no software can protect against (for example, turn on BitLocker with a PIN).
-
-## Screenshots
-
-| Approving an unlock on the phone | Tamper alarm on the phone |
-|---|---|
-| <img src="docs/screenshots/phone-light.png" width="280" alt="Visitor-slip approval screen: PC name, account, time, number entry, Deny and Approve"> | <img src="docs/screenshots/phone-tamper-light.png" width="280" alt="PC list with a tamper-alert card"> |
-
-| PC app: hardening and tamper alarm | PC app: get the phone app |
-|---|---|
-| <img src="docs/screenshots/companion-hardening-light.png" alt="Hardening screen: tamper alarm status, drive encryption, network sign-ins"> | <img src="docs/screenshots/companion-phone-app-light.png" alt="Get the phone app step with APK fingerprints"> |
-
-Dark mode, large text and more: [docs/screenshots](docs/screenshots/). (Screens show preview
-data, not a real PC.)
-
-## Download
-
-Get the latest release from **[Releases](https://github.com/simplehima/phonegate/releases)**:
-
-| File | What it is |
-|---|---|
-| `PhoneGate-Setup-<version>.exe` | Windows setup wizard (64-bit Windows 10 22H2+ / 11). Includes the phone app. |
-| `PhoneGate.apk` | The Android app (Android 11+), also inside the setup. |
-| `phonegate-relay-linux-x86_64` | The relay server binary (used by the Dokploy deployment). |
-| `SHA256SUMS.txt` | Checksums: verify before running anything. |
-
-Step-by-step guides live in the **[wiki](https://github.com/simplehima/phonegate/wiki)** (the same pages are in [docs/wiki](docs/wiki/README.md)).
 
 ## Components
 
@@ -75,15 +52,11 @@ research, plan, contracts, tasks) is in `specs/001-phone-approved-unlock/`.
 > ⚠️ **Try it in a virtual machine with a snapshot first.** PhoneGate changes how Windows signs
 > you in. Keep your recovery codes somewhere safe.
 
-1. **Relay** (on a VPS with a domain name). Pick one:
-   - **Dokploy**: create an Application from this repository with Build Type *Dockerfile*,
-     `deploy/dokploy/Dockerfile`, context `deploy/dokploy`, then add a domain on port 8080 with
-     HTTPS. See [Hosting the relay](docs/wiki/Hosting-the-relay.md).
-   - **Plain Docker + Caddy**:
-     ```bash
-     cd deploy && cp .env.example .env    # set PG_DOMAIN=relay.example.com
-     docker compose up -d                 # Caddy fetches a TLS certificate automatically
-     ```
+1. **Relay** (on a VPS with a domain name):
+   ```bash
+   cd deploy && cp .env.example .env    # set PG_DOMAIN=relay.example.com
+   docker compose up -d                 # Caddy fetches a TLS certificate automatically
+   ```
 2. **Windows**: run **`PhoneGate-Setup-<version>.exe`** and follow the wizard. Protection stays
    OFF after setup.
    - The setup isn't code-signed yet, so SmartScreen may warn ("More info" → "Run anyway").

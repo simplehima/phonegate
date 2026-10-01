@@ -45,6 +45,9 @@ class ApproveActivity : FragmentActivity() {
         setShowWhenLocked(true)
         setTurnScreenOn(true)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // With "show over other apps" granted, another app could draw a fake button over Approve.
+        // Drop any touch that passes through a window covering this screen.
+        window.decorView.filterTouchesWhenObscured = true
         val reqId = intent.getStringExtra(EXTRA_REQ_ID)
         val initial = reqId?.let { Pending.find(it) }
 

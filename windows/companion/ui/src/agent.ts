@@ -181,6 +181,21 @@ function getTransport(): Promise<Transport> {
 // polling loops from racing user actions.
 let queue: Promise<unknown> = Promise.resolve();
 
+// How many agent calls are in flight (queued or running), for the app-wide loading bar.
+let inFlight = 0;
+const busyListeners = new Set<(n: number) => void>();
+
+/** Calls `cb` with the number of agent requests in flight whenever it changes. Returns an unsubscribe. */
+export function onBusy(cb: (n: number) => void): () => void {
+  busyListeners.add(cb);
+  return () => busyListeners.delete(cb);
+}
+
+function setInFlight(delta: number): void {
+  inFlight = Math.max(0, inFlight + delta);
+  for (const cb of busyListeners) cb(inFlight);
+}
+
 async function call<T>(req: Request): Promise<T> {
   const run = async () => {
     const t = await getTransport();
@@ -190,8 +205,13 @@ async function call<T>(req: Request): Promise<T> {
     }
     return res as T;
   };
+  setInFlight(1);
   const p = queue.then(run, run);
   queue = p.catch(() => undefined);
+  void p.then(
+    () => setInFlight(-1),
+    () => setInFlight(-1),
+  );
   return p;
 }
 
@@ -298,10 +318,28 @@ export async function checkUpdate(): Promise<UpdateInfo> {
   return { ok: false };
 }
 
-/** Opens the project's releases page in the browser (the URL is fixed on the Rust side). */
-export async function openReleases(): Promise<void> {
+export type LinkKind = "releases" | "repo" | "license" | "security" | "issues";
+
+/** Opens a named project page in the browser. The address itself is fixed on the Rust side. */
+export async function openLink(kind: LinkKind): Promise<void> {
   if (inTauri) {
     const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("open_releases");
+    await invoke("open_link", { kind });
   }
+}
+
+export interface AppInfo {
+  version: string;
+  license: string;
+  repo: string;
+}
+
+/** The running app's version and licence, read from the build. */
+export async function appInfo(): Promise<AppInfo> {
+  if (inTauri) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return (await invoke("app_info")) as AppInfo;
+  }
+  if (import.meta.env.DEV || import.meta.env.VITE_PREVIEW === "1") return (await import("./mock")).mockAppInfo();
+  return { version: "", license: "Apache-2.0", repo: "https://github.com/simplehima/phonegate" };
 }

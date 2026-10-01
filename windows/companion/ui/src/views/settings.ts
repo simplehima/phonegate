@@ -1,11 +1,11 @@
-import { agent, type Status } from "../agent";
+import { agent, appInfo, openLink, type LinkKind, type Status } from "../agent";
 import { announce, busy, button, h, icon, nextId, notice } from "../dom";
 import { explain, validatePcName, validateRelayUrl } from "../copy";
 import { go } from "../nav";
 import { store } from "../store";
 import { confirmDialog } from "./dialog";
 import { errorBlock, page, skeleton } from "./common";
-import { setUpdateCheckEnabled, updateCheckEnabled } from "../updates";
+import { checkUpdateNow, setUpdateCheckEnabled, updateCheckEnabled } from "../updates";
 
 export function settingsView(root: HTMLElement): () => void {
   const section = page(root, "Settings", undefined, "page-settings");
@@ -159,12 +159,53 @@ export function settingsView(root: HTMLElement): () => void {
       setUpdateCheckEnabled(updBox.checked);
       announce(updBox.checked ? "Update checks on." : "Update checks off.");
     });
+    const updResult = h("div.update-result", { role: "status", "aria-live": "polite" });
+    const checkNow = button("Check now", { kind: "secondary", icon: "refresh" });
+    checkNow.addEventListener("click", () => {
+      void busy(checkNow, async () => {
+        updResult.replaceChildren(h("p.loading-line", null, h("span.spinner", { "aria-hidden": "true" }), "Checking GitHub..."));
+        const u = await checkUpdateNow();
+        if (!u.ok) {
+          updResult.replaceChildren(notice("warn", "Couldn't reach GitHub.", "Check your connection and try again."));
+        } else if (u.newer) {
+          updResult.replaceChildren(
+            notice("info", `PhoneGate ${(u.latest ?? "").replace(/^v/i, "")} is available`, `You have ${u.current}.`, button("Open releases page", { kind: "secondary", icon: "arrow-right", onClick: () => void openLink("releases") })),
+          );
+        } else {
+          updResult.replaceChildren(notice("ok", "You have the latest version.", u.current ? `PhoneGate ${u.current}.` : undefined));
+        }
+        announce("Update check finished.");
+      });
+    });
     const updates = h(
       "section.slip.slip-white.settings-card",
       { "aria-labelledby": "set-upd-h" },
       h("h2#set-upd-h", null, "Updates"),
       h("label.check-row", { for: updId }, updBox, h("span", null, "Check for a newer PhoneGate when this app opens")),
       h("p.help", { id: `${updId}-help` }, "This is the only time PhoneGate contacts anything besides your relay: one request to GitHub for the latest release number. It never downloads or installs anything by itself."),
+      h("div.slip-actions", null, checkNow),
+      updResult,
+    );
+
+    // About + help -----------------------------------------------------------------------------
+    const verDd = h("dd", null, h("span.ink", null, "Loading..."));
+    void appInfo().then((i) => {
+      verDd.replaceChildren(h("span.ink", null, i.version || "unknown"));
+    });
+    const link = (label: string, kind: LinkKind) => button(label, { kind: "quiet", icon: "arrow-right", onClick: () => void openLink(kind) });
+    const aboutApp = h(
+      "section.slip.slip-white.settings-card",
+      { "aria-labelledby": "set-app-h" },
+      h("h2#set-app-h", null, "About PhoneGate"),
+      h(
+        "dl.fields",
+        null,
+        h("div.field", null, h("dt", null, "Version"), verDd),
+        h("div.field", null, h("dt", null, "Licence"), h("dd", null, "Apache License 2.0")),
+        h("div.field", null, h("dt", null, "Source"), h("dd", null, h("span.pc-id", null, "github.com/simplehima/phonegate"))),
+      ),
+      h("p", null, "PhoneGate is free, open source software. Nothing in it is secret: every key is made on your own devices."),
+      h("div.link-list", null, link("Project page on GitHub", "repo"), link("Release notes and downloads", "releases"), link("Licence (Apache 2.0)", "license"), link("Report a bug", "issues"), link("Report a security problem privately", "security")),
     );
 
     // About -----------------------------------------------------------------------------------
@@ -181,7 +222,7 @@ export function settingsView(root: HTMLElement): () => void {
       h("p.help", null, "PhoneGate is open source. Fonts: Archivo and JetBrains Mono (SIL Open Font License). Icons: Lucide (ISC). License texts ship with the app in the licenses folder."),
     );
 
-    body.replaceChildren(h("div.settings-grid", null, nameForm, relayForm, pairCard, updates, about));
+    body.replaceChildren(h("div.settings-grid", null, nameForm, relayForm, pairCard, updates, aboutApp, about));
   };
 
   const load = async () => {
