@@ -13,5 +13,5 @@
 - [X] T411 [P] companion: passwordless opt-in wizard (warn → password once → phone approve → armed; off; update stored password), update banner from `update_check`, settings toggle; new ops in the allowlist + tests + mock; recaptures
 - [X] T412 installer: restore-point wizard page (default on) — enable System Protection if off, `Checkpoint-Computer` before install, handle 24h throttle, never block; `before-install` text mentions it
 - [X] T413 docs: SECURITY.md (passwordless trade, phone disable authority, update-check network egress), README (phone sign-in, update checks); bump version to 0.2.0 across workspace + Android + companion
-- [ ] T414 publish: push to public `simplehima/phonegate`, tag `v0.2.0`, build the setup, create the release with setup exe + APK + SHA256SUMS
-- [ ] T415 final validation: all gates green (Rust tests+clippy, Android, companion, installer, secret scan, update-check gate)
+- [X] T414 publish: push to public `simplehima/phonegate`, tag `v0.2.0`, build the setup, create the release with setup exe + APK + SHA256SUMS
+- [X] T415 final validation: all gates green (Rust tests+clippy, Android, companion, installer, secret scan, update-check gate)
