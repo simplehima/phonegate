@@ -4,6 +4,9 @@ import { defineConfig } from "vite";
 export default defineConfig({
   root: "ui",
   clearScreen: false,
+  // Fold the preview switch to a constant so a normal build drops the mock (and its fake data)
+  // from the bundle entirely; only `VITE_PREVIEW=1 npm run build` keeps it.
+  define: { "import.meta.env.VITE_PREVIEW": JSON.stringify((globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.VITE_PREVIEW ?? "") },
   server: { port: 5173, strictPort: true },
   preview: { port: 4173, strictPort: true },
   build: {

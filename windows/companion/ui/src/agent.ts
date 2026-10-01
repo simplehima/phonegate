@@ -127,7 +127,13 @@ export type Request =
   | { op: "netlogon_set"; block: boolean }
   | { op: "netlogon_unblock_begin" }
   | { op: "netlogon_unblock_wait"; req: string; timeout_ms: number }
-  | { op: "netlogon_unblock_recovery"; code: string };
+  | { op: "netlogon_unblock_recovery"; code: string }
+  // feature 004
+  | { op: "passwordless_status" }
+  | { op: "passwordless_enable"; account: string; password: string }
+  | { op: "passwordless_enable_wait"; req: string; timeout_ms: number }
+  | { op: "passwordless_disable" }
+  | { op: "passwordless_update_password"; password: string };
 
 /** A failure the UI can explain: what went wrong and what to do about it. */
 export class AgentError extends Error {
@@ -213,6 +219,11 @@ export const agent = {
   netlogonSet: (block: boolean) => call<{ ok: true }>({ op: "netlogon_set", block }),
   netlogonUnblockBegin: () => call<{ ok: true; req: string; number: number; expires_in_s?: number }>({ op: "netlogon_unblock_begin" }),
   netlogonUnblockWait: (req: string) => call<{ ok: true; state: ReqState }>({ op: "netlogon_unblock_wait", req, timeout_ms: 1500 }),
+  passwordlessStatus: () => call<{ ok: true; on: boolean; account?: string }>({ op: "passwordless_status" }),
+  passwordlessEnable: (account: string, password: string) => call<{ ok: true; req: string; number: number; expires_in_s?: number }>({ op: "passwordless_enable", account, password }),
+  passwordlessEnableWait: (req: string) => call<{ ok: true; state: ReqState }>({ op: "passwordless_enable_wait", req, timeout_ms: 1500 }),
+  passwordlessDisable: () => call<{ ok: true }>({ op: "passwordless_disable" }),
+  passwordlessUpdatePassword: (password: string) => call<{ ok: true }>({ op: "passwordless_update_password", password }),
   netlogonUnblockRecovery: (code: string) => call<{ ok: true; valid: boolean; locked_s: number; remaining?: number }>({ op: "netlogon_unblock_recovery", code }),
 };
 
@@ -263,4 +274,34 @@ export async function qrSvg(text: string): Promise<string> {
     return m.mockQrSvg(text);
   }
   throw new AgentError("not_in_app", "");
+}
+
+/** Result of the GitHub release check. `ok: false` means "couldn't tell"; the UI stays silent. */
+export interface UpdateInfo {
+  ok: boolean;
+  current?: string;
+  latest?: string;
+  newer?: boolean;
+}
+
+/** Asks the Rust side to compare against the latest GitHub release. Never throws. */
+export async function checkUpdate(): Promise<UpdateInfo> {
+  try {
+    if (inTauri) {
+      const { invoke } = await import("@tauri-apps/api/core");
+      return (await invoke("check_update")) as UpdateInfo;
+    }
+    if (import.meta.env.DEV || import.meta.env.VITE_PREVIEW === "1") return (await import("./mock")).mockUpdate();
+  } catch {
+    /* offline or blocked: say nothing */
+  }
+  return { ok: false };
+}
+
+/** Opens the project's releases page in the browser (the URL is fixed on the Rust side). */
+export async function openReleases(): Promise<void> {
+  if (inTauri) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("open_releases");
+  }
 }

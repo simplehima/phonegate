@@ -4,6 +4,7 @@ android/
 windows/companion/
 .git/
 dist/
+.impeccable/
 node_modules/
 **/node_modules/
 *.log

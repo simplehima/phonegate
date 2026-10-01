@@ -9,6 +9,8 @@ import { turnOffView } from "./views/turnoff";
 import { historyView } from "./views/history";
 import { settingsView } from "./views/settings";
 import { hardeningView } from "./views/hardening";
+import { phoneSignInView } from "./views/phonesignin";
+import { updateBanner } from "./updates";
 
 export type Cleanup = () => void;
 export type View = (root: HTMLElement) => Cleanup | void;
@@ -26,6 +28,7 @@ const ROUTES: Route[] = [
   { path: "setup", label: "Set up", icon: "pair", view: setupView, nav: true },
   { path: "recovery", label: "Recovery codes", icon: "key", view: recoveryView, nav: true },
   { path: "hardening", label: "Hardening", icon: "shield-alert", view: hardeningView, nav: true },
+  { path: "phone-signin", label: "Phone sign-in", icon: "phone", view: phoneSignInView, nav: true },
   { path: "history", label: "History", icon: "book", view: historyView, nav: true },
   { path: "settings", label: "Settings", icon: "settings", view: settingsView, nav: true },
   { path: "turn-off", label: "Turn off protection", icon: "shield-off", view: turnOffView, nav: false },
@@ -152,6 +155,10 @@ function route(): void {
   document.title = r.path === "status" ? "PhoneGate" : `${r.label} | PhoneGate`;
   cleanup = r.view(main);
   requestAnimationFrame(focusHeading);
+  // A newer release, if the check is on and GitHub answered. Silent otherwise.
+  void updateBanner().then((b) => {
+    if (b && main.isConnected && !main.querySelector(".update-banner")) main.prepend(b);
+  });
 }
 
 setTheme(readTheme());

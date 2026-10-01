@@ -70,6 +70,10 @@ Source: "{#Stage}\Android\PhoneGate.apk"; DestDir: "{app}\Android"; Flags: ignor
 Source: "{#Stage}\Android\PhoneGate.apk.json"; DestDir: "{app}\Android"; Flags: ignoreversion
 Source: "{#Stage}\Android\How to install on your phone.txt"; DestDir: "{app}\Android"; Flags: ignoreversion
 
+[Tasks]
+; Offered on the "Select Additional Tasks" page, checked by default.
+Name: "restorepoint"; Description: "Create a Windows System Restore point first (strongly recommended)"; GroupDescription: "Safety net:"
+
 [Icons]
 Name: "{autoprograms}\PhoneGate"; Filename: "{app}\PhoneGate.exe"; Comment: "Pair your phone and manage PhoneGate"
 Name: "{autoprograms}\PhoneGate phone app (APK)"; Filename: "{app}\Android"; Comment: "The PhoneGate app to copy to your Android phone"
@@ -120,8 +124,24 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
+  Ps, Script: String;
 begin
   Result := '';
+  { A System Restore point, before anything is installed. It is what let the owner recover a
+    bad install by hand once; offer it up front. Never block the install if it can't be made. }
+  if WizardIsTaskSelected('restorepoint') then begin
+    WizardForm.StatusLabel.Caption := 'Creating a System Restore point...';
+    Ps := ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe');
+    { Enable protection on the system drive, lift the once-per-24h throttle for this one point,
+      then create it. All best-effort. }
+    Script :=
+      'try {' +
+      '  Enable-ComputerRestore -Drive "$env:SystemDrive\" -ErrorAction SilentlyContinue;' +
+      '  New-ItemProperty -Path ''HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore'' -Name SystemRestorePointCreationFrequency -Value 0 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null;' +
+      '  Checkpoint-Computer -Description "Before installing PhoneGate" -RestorePointType "APPLICATION_INSTALL";' +
+      '} catch {}';
+    Exec(Ps, '-NoProfile -ExecutionPolicy Bypass -Command "' + Script + '"', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  end;
   { Upgrade: pause the watchdog so it doesn't restore old files mid-copy, then stop the
     service so its executable can be replaced. install.ps1 re-registers and restarts both.
     The phone will report that PhoneGate was stopped; that's expected during an update. }

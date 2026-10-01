@@ -14,7 +14,7 @@ use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemAlloc, CoTaskMemFree,
 use windows::Win32::UI::Shell::{
     ICredentialProviderCredential, ICredentialProviderCredential2, ICredentialProviderCredential2_Impl, ICredentialProviderCredentialEvents,
     ICredentialProviderCredential_Impl, CPFIS_FOCUSED, CPFIS_NONE, CPFS_DISPLAY_IN_SELECTED_TILE, CPFS_HIDDEN, CPFT_COMMAND_LINK, CPFT_EDIT_TEXT,
-    CPFT_LARGE_TEXT, CPFT_SMALL_TEXT, CPGSR_NO_CREDENTIAL_FINISHED, CPGSR_NO_CREDENTIAL_NOT_FINISHED, CPGSR_RETURN_CREDENTIAL_FINISHED, CPSI_ERROR, CPSI_NONE,
+    CPFT_LARGE_TEXT, CPFT_SMALL_TEXT, CPGSR_NO_CREDENTIAL_NOT_FINISHED, CPGSR_RETURN_CREDENTIAL_FINISHED, CPSI_ERROR, CPSI_NONE,
     CREDENTIAL_PROVIDER_CREDENTIAL_SERIALIZATION, CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR, CREDENTIAL_PROVIDER_FIELD_INTERACTIVE_STATE, CREDENTIAL_PROVIDER_FIELD_STATE,
     CREDENTIAL_PROVIDER_GET_SERIALIZATION_RESPONSE, CREDENTIAL_PROVIDER_STATUS_ICON,
 };
@@ -25,7 +25,7 @@ use windows_core::IUnknownImpl;
 use crate::events::WrappedEvents;
 use crate::gate::{self, Begin};
 use crate::provider::Shared;
-use crate::win::{self, Precheck};
+use crate::win;
 use crate::{kerb, policy, qr};
 
 // Our fields, numbered after the wrapped provider's fields.
@@ -76,12 +76,22 @@ struct Serial {
     data: Zeroizing<Vec<u8>>,
 }
 
+impl Serial {
+    /// Builds a submit serialization from agent-released logon bytes (passwordless, 004): the
+    /// Negotiate auth package plus PhoneGate's own CLSID. LSA still checks the password.
+    fn released(bytes: &[u8]) -> windows::core::Result<Self> {
+        Ok(Serial { package: win::negotiate_auth_package()?, clsid: crate::com::CLSID_PROVIDER, data: Zeroizing::new(bytes.to_vec()) })
+    }
+}
+
 pub struct State {
     mode: Mode,
     status: String,
     detail: String,
     code: Zeroizing<String>,
-    pending: Option<(String, Serial, Arc<AtomicBool>)>,
+    /// `serial` is the inner password provider's serialization, or `None` for passwordless (004),
+    /// where the agent releases the credential after approval.
+    pending: Option<(String, Option<Serial>, Arc<AtomicBool>)>,
     approved: Option<Serial>,
     offline_chal: Option<String>,
     qr: Option<qr::Pixels>,
@@ -264,14 +274,23 @@ impl Credential {
     /// Password + phone approval: starts the request and returns immediately; the worker thread
     /// triggers auto-submit through the provider when the agent reports a verified approval.
     fn start_phone_step(&self, out: OutParams) -> windows::core::Result<()> {
-        let Some(serial) = self.inner_serialization(out)? else { return Ok(()) };
-        let creds = kerb::parse(&serial.data);
-        if let Some(c) = &creds {
-            if win::precheck(c) == Precheck::WrongPassword {
-                return Credential::respond(out, CPGSR_NO_CREDENTIAL_FINISHED, Some(("The password is incorrect. Try again.", true)));
+        // Passwordless (004): when the agent has phone-only sign-in armed for this PC, the owner
+        // need not type a password; the agent releases the stored credential after approval. Any
+        // failure in this path falls back to the normal password tile — never a dead end.
+        let passwordless = gate::passwordless_on();
+        let serial = if passwordless {
+            None
+        } else {
+            match self.inner_serialization(out)? {
+                Some(s) => Some(s),
+                None => return Ok(()), // inner provider not finished (e.g. empty password)
             }
-        }
-        let account = creds.as_ref().map(|c| c.account()).unwrap_or_default();
+        };
+        // We do NOT pre-judge the password here. LSA performs the authoritative password check
+        // after GetSerialization; a local pre-check (LogonUserW) is unreliable for Microsoft
+        // accounts, Windows Hello/PIN and network-logon-restricted accounts, and a false negative
+        // would wrongly reject a correct password on every sign-in with no way past the gate.
+        let account = serial.as_ref().and_then(|s| kerb::parse(&s.data)).map(|c| c.account()).unwrap_or_default();
         let scenario = *self.shared.scenario.lock().unwrap_or_else(|p| p.into_inner());
         let remote = if scenario == "remote" { win::remote_client_address() } else { String::new() };
         match gate::begin(scenario, &account, &remote) {
@@ -337,12 +356,27 @@ impl Credential {
                     let mut s = st.lock().unwrap_or_else(|p| p.into_inner());
                     let still_ours = s.pending.as_ref().is_some_and(|(r, _, _)| *r == req);
                     if still_ours {
-                        let (_, serial, _) = s.pending.take().expect("checked");
+                        let (req_id, serial, _) = s.pending.take().expect("checked");
                         if state == "approved" {
-                            s.approved = Some(serial);
-                            s.status = "Approved on your phone".into();
-                            s.detail = "Signing in…".into();
-                            *shared.auto_submit.lock().unwrap_or_else(|p| p.into_inner()) = Some(index);
+                            // Passwordless: fetch the agent-released credential now. If it can't be
+                            // released, fall back to the password tile instead of failing.
+                            let resolved = match serial {
+                                Some(inner) => Some(inner),
+                                None => gate::release(&req_id).and_then(|bytes| Serial::released(&bytes).ok()),
+                            };
+                            match resolved {
+                                Some(cred) => {
+                                    s.approved = Some(cred);
+                                    s.status = "Approved on your phone".into();
+                                    s.detail = "Signing in…".into();
+                                    *shared.auto_submit.lock().unwrap_or_else(|p| p.into_inner()) = Some(index);
+                                }
+                                None => {
+                                    s.mode = Mode::Password;
+                                    s.status = IDLE_STATUS.into();
+                                    s.detail = "Approved, but the saved password couldn't be used. Enter your password, or use a recovery code.".into();
+                                }
+                            }
                         } else {
                             drop(serial); // zeroized
                             s.mode = Mode::Password;
@@ -365,13 +399,11 @@ impl Credential {
             return Credential::respond(out, CPGSR_NO_CREDENTIAL_NOT_FINISHED, Some((msg, true)));
         }
         let Some(serial) = self.inner_serialization(out)? else { return Ok(()) };
+        // The recovery / offline code is the safety net and must NEVER be gated by a password
+        // pre-check: LSA still verifies the typed password after this, so a wrong password simply
+        // fails at Windows' own check. Worst case a valid code is spent on a wrong password (1 of
+        // 10); that is vastly preferable to a false pre-check locking the owner out entirely.
         let creds = kerb::parse(&serial.data);
-        if let Some(c) = &creds {
-            // Never consume a code for a wrong password.
-            if win::precheck(c) == Precheck::WrongPassword {
-                return Credential::respond(out, CPGSR_NO_CREDENTIAL_FINISHED, Some(("The password is incorrect. Try again.", true)));
-            }
-        }
         let account = creds.as_ref().map(|c| c.account()).unwrap_or_default();
         let result = if offline {
             let chal = self.st().offline_chal.clone().unwrap_or_default();
@@ -667,5 +699,19 @@ impl ICredentialProviderCredential2_Impl for Credential_Impl {
             Some(i) => unsafe { i.GetUserSid() },
             None => Err(E_NOTIMPL.into()),
         })
+    }
+}
+
+#[cfg(test)]
+mod regression {
+    /// Lockout regression guard. A local password pre-check (LogonUserW) must never gate the
+    /// sign-in or recovery/offline paths: it wrongly rejected Microsoft-account and Windows
+    /// Hello/PIN sign-ins, and because it ran first it also blocked recovery codes, locking the
+    /// owner out. LSA is the sole authority on the password. Keep these paths oracle-free.
+    #[test]
+    fn no_password_oracle_gates_signin_or_recovery() {
+        let src = include_str!("credential.rs");
+        let needle = concat!("win::pre", "check(");
+        assert!(!src.contains(needle), "a password pre-check was reintroduced into the credential paths (lockout regression)");
     }
 }

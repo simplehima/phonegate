@@ -21,8 +21,10 @@ const libRs = readFileSync(join(root, "src-tauri/src/lib.rs"), "utf8");
 
 // 1. every control-pipe op from the contract is typed in agent.ts and allowlisted in Rust
 const ops = ["status", "settings_set", "pair_start", "pair_poll", "pair_decide", "recovery_generate", "recovery_confirm", "enable", "disable_begin", "disable_wait", "disable_recovery", "unpair", "history", "security_check",
-  // feature 002: docs/specs/002-tamper-hardening/contracts/agent-control-additions.md
-  "health", "bitlocker_status", "bitlocker_prepare", "bitlocker_enable", "netlogon_status", "netlogon_set", "netlogon_unblock_begin", "netlogon_unblock_wait", "netlogon_unblock_recovery"];
+  // feature 002: specs/002-tamper-hardening/contracts/agent-control-additions.md
+  "health", "bitlocker_status", "bitlocker_prepare", "bitlocker_enable", "netlogon_status", "netlogon_set", "netlogon_unblock_begin", "netlogon_unblock_wait", "netlogon_unblock_recovery",
+  // feature 004: specs/004-phone-login-updates/contracts/agent-control-additions.md
+  "passwordless_status", "passwordless_enable", "passwordless_enable_wait", "passwordless_disable", "passwordless_update_password"];
 for (const op of ops) {
   check(agentTs.includes(`op: "${op}"`), `agent.ts does not send op ${op}`);
   const opsBlock = libRs.slice(libRs.indexOf("const OPS"), libRs.indexOf("pub fn is_allowed_op"));

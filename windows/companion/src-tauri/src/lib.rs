@@ -55,7 +55,7 @@ const OPS: &[(&str, &[(&str, FieldKind)])] = &[
     ("unpair", &[]),
     ("history", &[("limit", FieldKind::Uint)]),
     ("security_check", &[]),
-    // feature 002 (docs/specs/002-tamper-hardening/contracts/agent-control-additions.md)
+    // feature 002 (specs/002-tamper-hardening/contracts/agent-control-additions.md)
     ("health", &[]),
     ("bitlocker_status", &[]),
     ("bitlocker_prepare", &[]),
@@ -65,6 +65,21 @@ const OPS: &[(&str, &[(&str, FieldKind)])] = &[
     ("netlogon_unblock_begin", &[]),
     ("netlogon_unblock_wait", &[("req", FieldKind::Str), ("timeout_ms", FieldKind::Uint)]),
     ("netlogon_unblock_recovery", &[("code", FieldKind::Str)]),
+    // feature 004 (specs/004-phone-login-updates/contracts/agent-control-additions.md)
+    ("passwordless_status", &[]),
+    ("passwordless_enable", &[("account", FieldKind::Str), ("password", FieldKind::Str)]),
+    ("passwordless_enable_wait", &[("req", FieldKind::Str), ("timeout_ms", FieldKind::Uint)]),
+    ("passwordless_disable", &[]),
+    ("passwordless_update_password", &[("password", FieldKind::Str)]),
+    // NOTE: update checks are NOT a pipe op. The SYSTEM agent makes no outbound HTTP; the
+    // companion does the GitHub GET itself (the `check_update` command below). See spec 004 T407.
+];
+
+/// Fields that MUST be present for an op (beyond type-checking the ones that are). The password
+/// flows only here, so an enable with a missing account or password is rejected before the pipe.
+const REQUIRED: &[(&str, &[&str])] = &[
+    ("passwordless_enable", &["account", "password"]),
+    ("passwordless_update_password", &["password"]),
 ];
 
 /// Returns true when `op` is one of the allowlisted control operations.
@@ -98,6 +113,13 @@ pub fn sanitize(request: &Value) -> Result<Value, String> {
             return Err(format!("bad_field:{key}"));
         }
         out.insert(key.clone(), value.clone());
+    }
+    if let Some((_, required)) = REQUIRED.iter().find(|(name, _)| *name == op) {
+        for field in *required {
+            if !out.contains_key(*field) {
+                return Err(format!("missing_field:{field}"));
+            }
+        }
     }
     Ok(Value::Object(out))
 }
@@ -193,6 +215,84 @@ fn reveal_apk() -> Result<(), String> {
     open_explorer_select(&path)
 }
 
+/// The project's releases page. Fixed here, never supplied by the UI.
+const RELEASES_URL: &str = "https://github.com/simplehima/phonegate/releases";
+
+/// Opens the releases page in the default browser. Takes no input; the URL is the constant above.
+#[tauri::command]
+fn open_releases() -> Result<(), String> {
+    open_url(RELEASES_URL)
+}
+
+/// GitHub's "latest release" endpoint for this project. Fixed here; the UI supplies nothing.
+const LATEST_RELEASE_API: &str = "https://api.github.com/repos/simplehima/phonegate/releases/latest";
+
+/// Checks GitHub for a newer release and compares with [`pg_core::update`]. This is the only call
+/// the companion makes outside your relay (spec 004 §4b). It is unauthenticated, read-only, never
+/// auto-installs, and the UI runs it only when the owner left the check on. Any failure (offline,
+/// rate-limited, bad JSON) returns `{ "ok": false }` so the UI can stay silent.
+#[tauri::command]
+async fn check_update() -> Value {
+    let current = env!("CARGO_PKG_VERSION");
+    let latest = tauri::async_runtime::spawn_blocking(|| fetch_latest_body().and_then(|b| pg_core::update::parse_latest_tag(&b)))
+        .await
+        .ok()
+        .flatten();
+    match latest {
+        Some(latest) => serde_json::json!({
+            "ok": true,
+            "current": current,
+            "latest": latest,
+            "newer": pg_core::update::is_newer(current, &latest),
+            "url": RELEASES_URL,
+        }),
+        None => serde_json::json!({ "ok": false }),
+    }
+}
+
+/// GET of the fixed release URL via the OS's own `curl.exe` (System32), so the companion carries
+/// no HTTP/TLS stack of its own. Arguments are constants; output is capped by `--max-filesize`.
+#[cfg(windows)]
+fn fetch_latest_body() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    let windir = std::env::var_os("SystemRoot").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+    let out = std::process::Command::new(windir.join(r"System32\curl.exe"))
+        .args(["--silent", "--fail", "--max-time", "8", "--max-filesize", "262144", "--proto", "=https", "-H"])
+        .arg(concat!("User-Agent: PhoneGate-Companion/", env!("CARGO_PKG_VERSION")))
+        .arg(LATEST_RELEASE_API)
+        .creation_flags(0x0800_0000)
+        .output()
+        .ok()?;
+    out.status.success().then(|| String::from_utf8(out.stdout).ok()).flatten()
+}
+
+#[cfg(not(windows))]
+fn fetch_latest_body() -> Option<String> {
+    None
+}
+
+#[cfg(windows)]
+fn open_url(url: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    // Hand the URL to the shell via ShellExecute, started from the Windows folder (the app runs
+    // elevated). The URL is a fixed https constant, so there is nothing user-controlled to quote.
+    let windir = std::env::var_os("SystemRoot").map(std::path::PathBuf::from).unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows"));
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    std::process::Command::new(windir.join(r"System32\cmd.exe"))
+        .raw_arg("/c start \"\" \"")
+        .raw_arg(url)
+        .raw_arg("\"")
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map(|_| ())
+        .map_err(|_| "open_failed".to_string())
+}
+
+#[cfg(not(windows))]
+fn open_url(_url: &str) -> Result<(), String> {
+    Err("open_failed".into())
+}
+
 #[cfg(windows)]
 fn open_explorer_select(path: &str) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
@@ -213,7 +313,7 @@ fn open_explorer_select(_path: &str) -> Result<(), String> {
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![agent, qr_svg, apk_info, reveal_apk])
+        .invoke_handler(tauri::generate_handler![agent, qr_svg, apk_info, reveal_apk, open_releases, check_update])
         .run(tauri::generate_context!())
         .expect("error while running PhoneGate");
 }
@@ -223,7 +323,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const CONTRACT_OPS: [&str; 23] = [
+    const CONTRACT_OPS: [&str; 28] = [
         "status",
         "settings_set",
         "pair_start",
@@ -247,6 +347,11 @@ mod tests {
         "netlogon_unblock_begin",
         "netlogon_unblock_wait",
         "netlogon_unblock_recovery",
+        "passwordless_status",
+        "passwordless_enable",
+        "passwordless_enable_wait",
+        "passwordless_disable",
+        "passwordless_update_password",
     ];
 
     #[test]
@@ -308,6 +413,35 @@ mod tests {
         assert_eq!(sanitize(&json!({"op": "bitlocker_prepare", "recovery_password": "x"})).unwrap_err(), "field_not_allowed:recovery_password");
         assert_eq!(sanitize(&json!({"op": "health", "status": {}})).unwrap_err(), "field_not_allowed:status");
         assert_eq!(sanitize(&json!({"op": "netlogon_set", "block": false, "force": true})).unwrap_err(), "field_not_allowed:force");
+    }
+
+    #[test]
+    fn passwordless_and_update_ops_enforce_field_types() {
+        // passwordless_enable needs both account and password, each a string.
+        let r = json!({"op": "passwordless_enable", "account": r"DESK\maya", "password": "s3cr3t pass"});
+        assert_eq!(sanitize(&r).unwrap(), r);
+        assert_eq!(sanitize(&json!({"op": "passwordless_enable", "account": r"DESK\maya"})).unwrap_err(), "missing_field:password");
+        assert_eq!(sanitize(&json!({"op": "passwordless_enable", "password": "p"})).unwrap_err(), "missing_field:account");
+        assert_eq!(sanitize(&json!({"op": "passwordless_enable"})).unwrap_err(), "missing_field:account");
+        assert_eq!(sanitize(&json!({"op": "passwordless_enable", "account": 3, "password": "p"})).unwrap_err(), "bad_field:account");
+        assert_eq!(sanitize(&json!({"op": "passwordless_enable", "account": "a", "password": true})).unwrap_err(), "bad_field:password");
+
+        let r = json!({"op": "passwordless_enable_wait", "req": "AAAAAAAAAAAAAAAAAAAAAA==", "timeout_ms": 1500});
+        assert_eq!(sanitize(&r).unwrap(), r);
+        assert_eq!(sanitize(&json!({"op": "passwordless_enable_wait", "req": "x", "timeout_ms": "1500"})).unwrap_err(), "bad_field:timeout_ms");
+
+        let r = json!({"op": "passwordless_update_password", "password": "new one"});
+        assert_eq!(sanitize(&r).unwrap(), r);
+        assert_eq!(sanitize(&json!({"op": "passwordless_update_password"})).unwrap_err(), "missing_field:password");
+        assert_eq!(sanitize(&json!({"op": "passwordless_update_password", "password": 9})).unwrap_err(), "bad_field:password");
+
+        assert_eq!(sanitize(&json!({"op": "passwordless_status"})).unwrap(), json!({"op": "passwordless_status"}));
+        assert_eq!(sanitize(&json!({"op": "passwordless_disable"})).unwrap(), json!({"op": "passwordless_disable"}));
+        // Update checks are a companion command, not a pipe op, so the agent never sees them.
+        assert!(!is_allowed_op("update_check"));
+        assert_eq!(sanitize(&json!({"op": "update_check"})).unwrap_err(), "op_not_allowed");
+        // An extra field is still refused, so a UI bug can't smuggle a path or flag through.
+        assert_eq!(sanitize(&json!({"op": "passwordless_disable", "account": "a"})).unwrap_err(), "field_not_allowed:account");
     }
 
     #[test]

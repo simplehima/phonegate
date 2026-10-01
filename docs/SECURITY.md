@@ -36,7 +36,7 @@ Mutation testing confirmed the suite fails if the acceptance rule is weakened.
 - **Libraries**: RustCrypto in Rust, and JCA/Keystore in Kotlin. There are no hand-rolled primitives.
 - **Wire format**: signed and hashed data uses a canonical length-prefixed encoding with a unique
   label per structure, which gives domain separation. JSON is never signed. The full specification
-  is in `docs/specs/001-phone-approved-unlock/contracts/protocol.md`.
+  is in `specs/001-phone-approved-unlock/contracts/protocol.md`.
 - **Cross-checks**: shared test vectors (`protocol/vectors/v1.json`) keep the Rust and Kotlin
   implementations byte-identical.
 
@@ -65,6 +65,28 @@ What PhoneGate guarantees instead is that **removal or tampering cannot happen s
 | **Safe Mode** | The agent is registered to start in Safe Mode and raises a Safe Mode alarm: immediately with networking, otherwise queued until the next normal start. | Windows does not load third-party sign-in tiles in Safe Mode, so the phone step is skipped there. The password is still required. |
 | **BitLocker + PIN helper** | The companion turns on drive encryption with a startup PIN, or upgrades TPM-only to TPM+PIN. The recovery key is shown once and the owner must type its last 6 digits back. The PIN is passed over stdin, never stored or logged. | Needs a Windows edition with BitLocker (Pro/Enterprise/Education). |
 | **Network sign-in block** | Optional `SeDenyNetworkLogonRight` for NT AUTHORITY\Local account (S-1-5-113). The password alone no longer works over SMB, WinRM or RDP-with-NLA. Unblocking while protection is on needs the phone or a recovery code. | Breaks inbound file sharing, remote PowerShell and Remote Desktop for local accounts, by design. |
+
+## 4b. Phone sign-in, phone disable, update checks (feature 004)
+
+- **Passwordless sign-in is opt-in, per PC, and off by default.** When you turn it on for a PC,
+  that PC's Windows password is stored there, wrapped by the TPM (or DPAPI without a TPM) and
+  readable only by SYSTEM. After a verified phone approval (matching number, approve-key
+  signature, single-use), the agent hands the sign-in tile that credential once and LSA checks it.
+  **The trade you are accepting:** on a passwordless PC, a phone approval alone signs you in, and
+  your password lives on the PC (hardware-wrapped). Someone who can force an approval on your
+  phone, or extract the TPM with physical access, could sign in. That is why it is opt-in with a
+  warning, and why the default stays password + phone. Turning it off wipes the stored password.
+  If the stored password is later wrong (you changed it in Windows), LSA rejects it and the tile
+  asks you to type it or use a recovery code — never a lockout (the 003 no-password-oracle rule
+  still holds, enforced by a build-failing test).
+- **Phone-initiated disable.** "Turn off protection" from the phone is authorised by the
+  biometric-bound **approve** key, not merely the envelope's device-key signature; the PC checks
+  that signature, a ≤120 s freshness window and single-use, so a captured or wrongly-signed
+  command does nothing. A compromised relay still cannot forge it.
+- **Update checks** are the first time either app contacts anything but your relay. They are a
+  plain, unauthenticated GET to `api.github.com` for the latest release tag, off-switchable, never
+  auto-install, and silent on failure. The SYSTEM agent never makes this call — only the companion
+  and the phone app do.
 
 ## 5. Residual risks (software cannot close these)
 

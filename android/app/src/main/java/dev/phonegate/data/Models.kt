@@ -78,6 +78,8 @@ data class PairedPc(
     val health: Health = Health.new(pairedAt),
     /** The alert of the current or most recent episode, as shown to the owner. */
     val alert: AlertRecord? = null,
+    /** A phone-issued "turn off protection" the PC has not yet confirmed (feature 004). */
+    val disable: DisableState? = null,
 ) {
     val pcPubBytes: ByteArray get() = B64.decodeFixed(pcPub, 65)
     val pcIdBytes: ByteArray get() = B64.decodeFixed(pcId, 32)
@@ -100,6 +102,7 @@ data class PairedPc(
         .apply {
             if (repairReason != null) put("repair_reason", repairReason)
             if (alert != null) put("alert", alert.toJson())
+            if (disable != null) put("disable", disable.toJson())
         }
 
     companion object {
@@ -120,11 +123,21 @@ data class PairedPc(
                 // Pairings stored before feature 002 start tracking from the moment they load.
                 health = o.optJSONObject("health")?.let { Health.fromJson(it) } ?: Health.new(System.currentTimeMillis()),
                 alert = o.optJSONObject("alert")?.let { AlertRecord.fromJson(it) },
+                disable = o.optJSONObject("disable")?.let { DisableState.fromJson(it) },
             )
             // The stored id must still be the hash of the pinned key.
             require(Crypto.idOf(pc.pcPubBytes).contentEquals(pc.pcIdBytes)) { "pc id does not match pinned key" }
             return pc
         }
+    }
+}
+
+/** Tracks a phone-issued disable command until the PC confirms it (status enforce=false or notice). */
+data class DisableState(val requestedAt: Long, val sent: Boolean) {
+    fun toJson(): JSONObject = JSONObject().put("requested_at", requestedAt).put("sent", sent)
+
+    companion object {
+        fun fromJson(o: JSONObject) = DisableState(o.getLong("requested_at"), o.optBoolean("sent", true))
     }
 }
 
@@ -167,7 +180,8 @@ enum class Outcome(val wire: String, val stamp: String) {
     Unpaired("unpaired", "UNPAIRED"),
     Notice("notice", "NOTICE"),
     Tamper("tamper", "TAMPER ALERT"),
-    PcEvent("pc_event", "PC EVENT");
+    PcEvent("pc_event", "PC EVENT"),
+    Disabled("disabled", "PROTECTION OFF");
 
     companion object {
         fun parse(s: String): Outcome = entries.firstOrNull { it.wire == s } ?: Error

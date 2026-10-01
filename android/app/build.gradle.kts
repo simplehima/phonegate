@@ -35,8 +35,8 @@ android {
         applicationId = "dev.phonegate"
         minSdk = 30
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     // Release signing key lives OUTSIDE the repository (tools/android-release-key.ps1 creates it).

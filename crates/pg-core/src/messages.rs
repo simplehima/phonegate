@@ -82,10 +82,11 @@ pub enum Kind {
     Notice,
     Unpair,
     Status,
+    Command,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 10] = [
+    pub const ALL: [Kind; 11] = [
         Kind::PairOffer,
         Kind::PairJoin,
         Kind::PairConfirm,
@@ -96,6 +97,7 @@ impl Kind {
         Kind::Notice,
         Kind::Unpair,
         Kind::Status,
+        Kind::Command,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -110,6 +112,7 @@ impl Kind {
             Kind::Notice => "notice",
             Kind::Unpair => "unpair",
             Kind::Status => "status",
+            Kind::Command => "command",
         }
     }
 
@@ -125,7 +128,7 @@ impl Kind {
     pub fn is_sealed(self) -> bool {
         matches!(
             self,
-            Kind::ApprovalRequest | Kind::ApprovalResponse | Kind::Cancel | Kind::Notice | Kind::Unpair | Kind::Status
+            Kind::ApprovalRequest | Kind::ApprovalResponse | Kind::Cancel | Kind::Notice | Kind::Unpair | Kind::Status | Kind::Command
         )
     }
 }
@@ -469,6 +472,84 @@ impl Unpair {
     }
 }
 
+/// Max lifetime of a phone-issued command (feature 004).
+pub const MAX_COMMAND_LIFETIME_MS: u64 = 120_000;
+
+/// A phone-initiated command (phone → PC), e.g. "turn off protection". Its authority is the
+/// biometric-bound **approve** key, so the device key sealing the envelope is not enough on its
+/// own — the PC verifies `approve_sig` against the pinned approve key (protocol 004 §1).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Command {
+    pub cmd_id: [u8; 16],
+    pub nonce: [u8; 32],
+    pub pc_id: Id,
+    pub phone_id: Id,
+    pub issued_at: u64,
+    pub expires_at: u64,
+    pub command: String,
+    pub approve_sig: Sig,
+}
+
+const CMD_LABEL: &str = "phonegate/v1/command";
+
+/// The bytes the approve key signs. Independent of pc_id/phone_id so the authority is over the
+/// action, bound by nonce/expiry and verified against this pairing's approve key.
+pub fn command_auth_bytes(cmd_id: &[u8; 16], nonce: &[u8; 32], command: &str, issued_at: u64, expires_at: u64) -> Vec<u8> {
+    Enc::new("phonegate/v1/command-auth")
+        .bytes(cmd_id)
+        .bytes(nonce)
+        .str(command)
+        .u64(issued_at)
+        .u64(expires_at)
+        .finish()
+}
+
+impl Command {
+    /// Builds and signs a command with the phone's approve key.
+    #[allow(clippy::too_many_arguments)] // flat, explicit fields read clearer than a params struct here
+    pub fn create(signer: &dyn Signer, pc_id: Id, phone_id: Id, command: &str, issued_at: u64, expires_at: u64, cmd_id: [u8; 16], nonce: [u8; 32]) -> Result<Self> {
+        let approve_sig = signer.sign(&command_auth_bytes(&cmd_id, &nonce, command, issued_at, expires_at))?;
+        Ok(Command { cmd_id, nonce, pc_id, phone_id, issued_at, expires_at, command: command.to_string(), approve_sig })
+    }
+
+    pub fn encode(&self) -> Vec<u8> {
+        Enc::new(CMD_LABEL)
+            .bytes(&self.cmd_id)
+            .bytes(&self.nonce)
+            .bytes(&self.pc_id)
+            .bytes(&self.phone_id)
+            .u64(self.issued_at)
+            .u64(self.expires_at)
+            .str(&self.command)
+            .bytes(&self.approve_sig)
+            .finish()
+    }
+
+    pub fn decode(b: &[u8]) -> Result<Self> {
+        let f = decode(b, CMD_LABEL, 9)?;
+        let c = Command {
+            cmd_id: f.fixed(1)?,
+            nonce: f.fixed(2)?,
+            pc_id: f.fixed(3)?,
+            phone_id: f.fixed(4)?,
+            issued_at: f.u64(5)?,
+            expires_at: f.u64(6)?,
+            command: f.string(7)?,
+            approve_sig: f.fixed(8)?,
+        };
+        if c.expires_at <= c.issued_at || c.expires_at - c.issued_at > MAX_COMMAND_LIFETIME_MS {
+            return Err(Error::Decode("invalid command lifetime"));
+        }
+        Ok(c)
+    }
+
+    /// Verifies the approve-key authority signature. Caller still checks ids, freshness and
+    /// single-use.
+    pub fn verify_auth(&self, approve_pub: &Pub) -> Result<()> {
+        crypto::verify(approve_pub, &command_auth_bytes(&self.cmd_id, &self.nonce, &self.command, self.issued_at, self.expires_at), &self.approve_sig)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -561,6 +642,27 @@ mod tests {
         for k in ["agent-stopped", "shutdown", "sleep", "resume", "repaired", "safe-mode-boot", "setting-changed", "agent-started"] {
             assert_eq!(NoticeKind::parse(k).unwrap().as_str(), k);
         }
+    }
+
+    #[test]
+    fn command_roundtrip_and_auth() {
+        let approve = SoftSigner::generate().unwrap();
+        let device = SoftSigner::generate().unwrap();
+        let c = Command::create(&approve, [1; 32], [2; 32], "disable-protection", 1_000, 61_000, [3; 16], [4; 32]).unwrap();
+        let d = Command::decode(&c.encode()).unwrap();
+        assert_eq!(d, c);
+        assert!(d.verify_auth(&approve.public()).is_ok());
+        // Wrong authority key (e.g. the device key) is rejected.
+        assert!(d.verify_auth(&device.public()).is_err());
+        // Tampering with the command breaks the authority signature.
+        let mut t = d.clone();
+        t.command = "something-else".into();
+        assert!(t.verify_auth(&approve.public()).is_err());
+        assert!(Kind::Command.is_sealed());
+        // Over-long lifetime is rejected at decode.
+        let mut long = c.clone();
+        long.expires_at = long.issued_at + MAX_COMMAND_LIFETIME_MS + 1;
+        assert!(Command::decode(&long.encode()).is_err());
     }
 
     #[test]

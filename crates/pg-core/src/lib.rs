@@ -1,7 +1,7 @@
 //! # pg-core
 //!
 //! The single Rust implementation of the PhoneGate v1 protocol
-//! (`docs/specs/001-phone-approved-unlock/contracts/protocol.md`). It is shared by the relay, the
+//! (`specs/001-phone-approved-unlock/contracts/protocol.md`). It is shared by the relay, the
 //! Windows agent, the credential provider, the companion app, and the test simulator.
 //!
 //! Security rests only on keys generated on the user's devices (Constitution I). Nothing in this
@@ -22,6 +22,7 @@ pub mod pairing;
 pub mod recovery;
 pub mod signer;
 pub mod store;
+pub mod update;
 
 #[cfg(feature = "client")]
 pub mod relay_client;

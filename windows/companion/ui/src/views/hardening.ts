@@ -1,5 +1,5 @@
 // Hardening (feature 002): tamper alarm + self-repair status, BitLocker with a startup PIN, and the
-// network sign-in block. Contract: docs/specs/002-tamper-hardening/contracts/agent-control-additions.md.
+// network sign-in block. Contract: specs/002-tamper-hardening/contracts/agent-control-additions.md.
 
 import { agent, AgentError, type BitLockerStatus, type Health, type HealthStatus, type ReqState, type Status } from "../agent";
 import { announce, append, busy, button, h, icon, nextId, notice, stamp } from "../dom";

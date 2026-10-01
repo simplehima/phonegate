@@ -45,6 +45,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import dev.phonegate.data.PhoneStore
+import android.widget.Toast
+import dev.phonegate.net.DisableSender
+import dev.phonegate.net.UpdateChecker
 import dev.phonegate.net.HealthMonitor
 import dev.phonegate.net.Notifications
 import dev.phonegate.net.RelayHub
@@ -150,9 +153,18 @@ private fun AppRoot(activity: FragmentActivity, startTab: Int, alertPc: String?,
     val offline = remember { OfflineController(activity) }
     val offlineState by offline.state.collectAsState()
 
+    var updateChecks by remember { mutableStateOf(UpdateChecker.enabled(activity)) }
+    var newer by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(updateChecks) { newer = if (updateChecks) UpdateChecker.newerRelease(activity.packageManager.getPackageInfo(activity.packageName, 0).versionName ?: "0") else null }
+
     val banners = run {
         @Suppress("UNUSED_EXPRESSION") resumeTick
         val list = ArrayList<Banner>()
+        newer?.let { tag ->
+            list += Banner("PhoneGate ${tag.removePrefix("v")} is available. Download the new phone app from the releases page and install it over this one.", "Open releases page") {
+                activity.startActivity(Intent(Intent.ACTION_VIEW, UpdateChecker.RELEASES_URL.toUri()))
+            }
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -189,6 +201,7 @@ private fun AppRoot(activity: FragmentActivity, startTab: Int, alertPc: String?,
             lastReport = lastReportText(pc.health.lastSeq != null, pc.health.lastSeenAt, now),
             bitlockerOff = pc.health.bitlockerOff,
             netlogonBlocked = pc.health.netlogonBlocked,
+            disablePending = pc.disable != null,
             alert = pc.alert?.takeIf { pc.health.inAlert }?.let {
                 AlertInfo(
                     message = it.message,
@@ -230,6 +243,17 @@ private fun AppRoot(activity: FragmentActivity, startTab: Int, alertPc: String?,
                 onMarkSeen = { id -> HealthMonitor.markSeen(activity, id) },
                 openAlertFor = alertPc,
                 onOpenHandled = onAlertShown,
+                onTurnOff = { id ->
+                    DisableSender.requestDisable(activity, id) { r ->
+                        val msg = when (r) {
+                            is DisableSender.Outcome2.Sent -> "Turn-off request sent."
+                            is DisableSender.Outcome2.Failed -> r.reason
+                        }
+                        Toast.makeText(activity, msg, Toast.LENGTH_LONG).show()
+                    }
+                },
+                updateChecks = updateChecks,
+                onUpdateChecks = { on -> UpdateChecker.setEnabled(activity, on); updateChecks = on },
             )
             1 -> HistoryScreen(history, m)
             else -> OfflineScreen(offlineState, offline::onScanned, { offline.unlock(activity) }, offline::reset, m)

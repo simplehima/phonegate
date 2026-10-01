@@ -23,6 +23,7 @@ use serde::Serialize;
 use tokio::sync::Notify;
 use zeroize::Zeroizing;
 
+use crate::credcache;
 use crate::keys::KeyBackend;
 use crate::probe::{BitLockerInfo, Platform, Probe};
 use crate::state::{AttemptRecord, Pairing, Paths, PcState};
@@ -93,6 +94,8 @@ struct Outstanding {
     digest: [u8; 32],
     state: ReqState,
     consumed: bool,
+    /// Passwordless (004): the stored credential has already been released once for this request.
+    released: bool,
 }
 
 struct PairingSession {
@@ -125,6 +128,8 @@ struct Inner {
     bitlocker_last6: Option<Zeroizing<String>>,
     /// Watchdog repair notices already written to local history (a notice may be re-sent).
     logged_repairs: std::collections::HashSet<(u64, String)>,
+    /// Passwordless opt-in in progress: (req_id, account, wrapped password) awaiting approval.
+    passwordless_pending: Option<([u8; 16], String, String)>,
 }
 
 pub struct Engine {
@@ -141,6 +146,8 @@ pub struct GateStatus {
     pub paired: bool,
     pub relay: &'static str,
     pub cooldown_s: u64,
+    /// Passwordless sign-in is armed for this PC (004): the tile expects to `release` a credential.
+    pub passwordless: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -233,6 +240,7 @@ impl Engine {
                     enforce: false,
                     history: vec![],
                     status_seq: 0,
+                    passwordless: None,
                 };
                 store::write_json_atomic(&cfg.paths.state(), &s)?;
                 s
@@ -265,6 +273,7 @@ impl Engine {
                 last_status_sent: None,
                 bitlocker_last6: None,
                 logged_repairs: Default::default(),
+                passwordless_pending: None,
             }),
             changed: Notify::new(),
             relay_changed: Notify::new(),
@@ -560,6 +569,97 @@ impl Engine {
         Ok(out)
     }
 
+    // Passwordless sign-in (US1) ---------------------------------------------------------------
+
+    pub fn passwordless_status(&self) -> (bool, Option<String>) {
+        let inner = self.lock();
+        match &inner.state.passwordless {
+            Some(p) => (true, Some(p.account.clone())),
+            None => (false, None),
+        }
+    }
+
+    pub fn is_passwordless(&self) -> bool {
+        self.lock().state.passwordless.is_some()
+    }
+
+    /// Step 1 of opt-in: wrap the password, hold it pending, and start a phone approval. Nothing is
+    /// armed until the approval succeeds (`passwordless_enable_wait`).
+    pub fn passwordless_enable(&self, account: &str, password: &str) -> std::result::Result<BeginOk, GateError> {
+        if account.trim().is_empty() || password.is_empty() {
+            return Err(GateError::Internal("account and password are required".into()));
+        }
+        let wrapped = credcache::wrap_password(self.keys.as_ref(), password).map_err(|e| GateError::Internal(e.to_string()))?;
+        let begin = self.begin(Scenario::ChangeSetting, "Turn on phone sign-in", "")?;
+        let req: [u8; 16] = b64::decode_fixed(&begin.req).map_err(|e| GateError::Internal(e.to_string()))?;
+        self.lock().passwordless_pending = Some((req, account.trim().to_string(), wrapped));
+        Ok(begin)
+    }
+
+    /// Step 2: wait for the approval; arm on success, discard the pending password otherwise.
+    pub async fn passwordless_enable_wait(&self, req_id: &[u8; 16], timeout: Duration) -> Result<ReqState> {
+        let is_ours = self.lock().passwordless_pending.as_ref().map(|(r, _, _)| r == req_id).unwrap_or(false);
+        if !is_ours {
+            return Ok(ReqState::Expired);
+        }
+        let s = self.wait(req_id, timeout).await;
+        let mut inner = self.lock();
+        let Some((r, account, wrapped)) = inner.passwordless_pending.clone() else { return Ok(s) };
+        if &r != req_id {
+            return Ok(s);
+        }
+        if s == ReqState::Approved {
+            inner.state.passwordless = Some(crate::state::Passwordless { account, password_wrapped: wrapped });
+            inner.passwordless_pending = None;
+            self.save(&inner)?;
+            self.history(&mut inner, "", "settings", "passwordless_enabled", None);
+            drop(inner);
+            let _ = self.send_status();
+        } else {
+            // Not approved: drop the pending (wrapped) password; nothing is stored.
+            inner.passwordless_pending = None;
+        }
+        Ok(s)
+    }
+
+    pub fn passwordless_disable(&self) -> Result<()> {
+        let mut inner = self.lock();
+        if inner.state.passwordless.take().is_some() {
+            inner.passwordless_pending = None;
+            self.save(&inner)?;
+            self.history(&mut inner, "", "settings", "passwordless_disabled", None);
+        }
+        Ok(())
+    }
+
+    pub fn passwordless_update_password(&self, password: &str) -> Result<()> {
+        if password.is_empty() {
+            return Err(Error::State("password required"));
+        }
+        let wrapped = credcache::wrap_password(self.keys.as_ref(), password)?;
+        let mut inner = self.lock();
+        let Some(p) = inner.state.passwordless.as_mut() else { return Err(Error::State("not_armed")) };
+        p.password_wrapped = wrapped;
+        self.save(&inner)
+    }
+
+    /// Gate op: release the stored credential for an approved request, exactly once. Returns the
+    /// packed logon serialization the credential provider submits to LogonUI.
+    pub fn release(&self, req_id: &[u8; 16]) -> std::result::Result<Zeroizing<Vec<u8>>, &'static str> {
+        let mut inner = self.lock();
+        let Some(pw) = inner.state.passwordless.clone() else { return Err("not_passwordless") };
+        let now = self.now();
+        let o = inner.outstanding.get_mut(req_id).ok_or("not_approved")?;
+        if o.state != ReqState::Approved || now >= o.req.expires_at + 5 * 60_000 {
+            return Err("not_approved");
+        }
+        if o.released {
+            return Err("not_approved");
+        }
+        o.released = true;
+        credcache::release_serialization(self.keys.as_ref(), &pw.account, &pw.password_wrapped).map_err(|_| "release_failed")
+    }
+
     fn seal_to_phone(&self, inner: &Inner, kind: Kind, plain: &[u8]) -> Result<(Id, Vec<u8>)> {
         let p = inner.state.pairing.as_ref().ok_or(Error::State("not paired"))?;
         let k = inner.k_pair.as_ref().ok_or(Error::State("not paired"))?;
@@ -669,6 +769,31 @@ impl Engine {
                 drop(inner);
                 self.changed.notify_waiters();
             }
+            Kind::Command => {
+                // Phone-initiated command (004). Authority is the approve key, not just the
+                // envelope's device-key signature. Fresh, single-use, verified before acting.
+                let cmd = messages::Command::decode(&plain)?;
+                if cmd.pc_id != self.pc_id() || cmd.phone_id != phone_id {
+                    return Err(Error::Verify("command ids do not match pairing"));
+                }
+                if now >= cmd.expires_at || cmd.issued_at > now + 300_000 {
+                    return Err(Error::Expired);
+                }
+                cmd.verify_auth(&approve_pub)?;
+                if inner.seen.insert(cmd.cmd_id, now).is_some() {
+                    return Err(Error::Replay);
+                }
+                match cmd.command.as_str() {
+                    "disable-protection" => {
+                        drop(inner);
+                        if self.is_enforcing() {
+                            self.set_disabled("protection_disabled_by_phone_command")?;
+                        }
+                        self.changed.notify_waiters();
+                    }
+                    _ => return Err(Error::Decode("unknown command")),
+                }
+            }
             _ => {}
         }
         Ok(())
@@ -724,6 +849,7 @@ impl Engine {
             paired: inner.state.pairing.is_some(),
             relay: if inner.relay.is_some() { "up" } else { "down" },
             cooldown_s: secs(inner.cooldown_until.saturating_sub(self.now())),
+            passwordless: inner.state.passwordless.is_some(),
         }
     }
 
@@ -766,7 +892,7 @@ impl Engine {
             .map_err(|_| GateError::RelayDown)?;
         let ok = BeginOk { req: b64::encode(&req.req_id), number: req.match_number, expires_in_s: REQUEST_LIFETIME_MS / 1000 };
         let digest = req.digest();
-        inner.outstanding.insert(req.req_id, Outstanding { req, digest, state: ReqState::Pending, consumed: false });
+        inner.outstanding.insert(req.req_id, Outstanding { req, digest, state: ReqState::Pending, consumed: false, released: false });
         Ok(ok)
     }
 
