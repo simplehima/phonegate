@@ -106,6 +106,8 @@ impl State {
         self.approved = None;
         self.offline_chal = None;
         self.qr = None;
+        // Every way back to password mode (cancel, back, success, deselect) closes the big QR.
+        crate::qrwin::hide();
         self.code = Zeroizing::new(String::new());
     }
 }
@@ -430,8 +432,11 @@ impl Credential {
                 s.mode = Mode::Offline;
                 s.offline_chal = Some(chal);
                 s.qr = qr::render(&text, 420);
+                // The tile image is avatar-sized, too small to scan. Show the QR large beside it
+                // for exactly as long as the challenge is valid (60 s).
+                crate::qrwin::show(&text, 60_000);
                 s.status = "Offline approval".into();
-                s.detail = "Open PhoneGate on your phone, choose Offline code, scan the QR code, then type the code it shows and your password.".into();
+                s.detail = "Open PhoneGate on your phone, choose Offline code, scan the QR code shown beside this sign-in box, then type the code it shows and your password.".into();
             }
             Err(_) => {
                 let mut s = self.st();
@@ -469,6 +474,7 @@ impl ICredentialProviderCredential_Impl for Credential_Impl {
     fn UnAdvise(&self) -> windows::core::Result<()> {
         guard(|| {
             *self.events.lock().unwrap_or_else(|p| p.into_inner()) = None;
+            crate::qrwin::hide();
             // SAFETY: forwarding.
             unsafe { self.inner.UnAdvise() }
         })
@@ -485,6 +491,7 @@ impl ICredentialProviderCredential_Impl for Credential_Impl {
             if mode != Mode::Pending {
                 self.st().code = Zeroizing::new(String::new());
             }
+            crate::qrwin::hide();
             // SAFETY: forwarding.
             unsafe { self.inner.SetDeselected() }
         })

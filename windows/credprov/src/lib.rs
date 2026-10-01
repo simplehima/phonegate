@@ -28,6 +28,8 @@ mod filter;
 #[cfg(windows)]
 mod provider;
 #[cfg(windows)]
+mod qrwin;
+#[cfg(windows)]
 mod win;
 
 #[cfg(windows)]

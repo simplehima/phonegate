@@ -8,9 +8,13 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clipToBounds
+import android.util.Size
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -94,7 +98,15 @@ private fun CameraPreview(onText: (String) -> Unit, modifier: Modifier) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val executor = remember { Executors.newSingleThreadExecutor() }
-    val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
+    // COMPATIBLE renders through a TextureView, which scrolls, clips and stacks like any other view.
+    // The default (a SurfaceView) is punched through the window and ignores Compose layout, so it
+    // painted over the title bar and the controls around it.
+    val previewView = remember {
+        PreviewView(context).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
     DisposableEffect(owner) {
         val future = ProcessCameraProvider.getInstance(context)
         var provider: ProcessCameraProvider? = null
@@ -102,7 +114,12 @@ private fun CameraPreview(onText: (String) -> Unit, modifier: Modifier) {
             val p = future.get()
             provider = p
             val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
+            // A dense QR shown on a monitor needs more than CameraX's 640x480 default to resolve.
+            val hiRes = ResolutionSelector.Builder()
+                .setResolutionStrategy(ResolutionStrategy(Size(1920, 1080), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER))
+                .build()
             val analysis = ImageAnalysis.Builder()
+                .setResolutionSelector(hiRes)
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
                 .also { it.setAnalyzer(executor, QrAnalyzer { text -> ContextCompat.getMainExecutor(context).execute { onText(text) } }) }
@@ -150,6 +167,7 @@ fun QrScanOrPaste(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
+                    .clipToBounds()
                     .border(2.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.extraSmall)
                     .semantics { contentDescription = scanDescription },
             )
